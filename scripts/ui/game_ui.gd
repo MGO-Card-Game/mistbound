@@ -9,14 +9,18 @@ signal leave_requested()
 signal equip_requested(item_id: String)
 signal save_requested()
 
-const INK := Color("101e24")
-const PANEL := Color("172b31")
-const PANEL_LIGHT := Color("213a40")
-const LINE := Color("365058")
-const PAPER := Color("eee9db")
-const MUTED := Color("a8bab7")
-const GOLD := Color("dfbd79")
-const TEAL := Color("80c5b5")
+const Art = preload("res://scripts/art/pixel_art.gd")
+const PixelUI = preload("res://scripts/ui/pixel_ui.gd")
+const Backdrop = preload("res://scripts/ui/menu_backdrop.gd")
+
+const INK := Color("0a0f11")
+const PANEL := Color("141d21")
+const PANEL_LIGHT := Color("1f2c31")
+const LINE := Color("30434a")
+const PAPER := Color("e9efe8")
+const MUTED := Color("9aa8a2")
+const GOLD := Color("f0c95a")
+const TEAL := Color("9cc7bb")
 
 var _root: Control
 var _menu: Control
@@ -47,6 +51,7 @@ func _ready() -> void:
 	_root.name = "Interface"
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_root.theme = _make_theme()
 	add_child(_root)
 	_build_menu()
@@ -107,22 +112,22 @@ func notify(message: String) -> void:
 
 
 func update_hud(state: Dictionary) -> void:
-	_zone.text = str(state.get("zone_title", "旅人营地"))
-	_session.text = "%s  ·  %d / 4 人" % [str(state.get("mode", "单人探索")), int(state.get("player_count", 1))]
+	_zone.text = str(state.get("zone_title", "雾线前哨"))
+	_session.text = "%s  ·  %d / 4 人" % [str(state.get("mode", "单人行动")), int(state.get("player_count", 1))]
 	var hp := float(state.get("hp", 100.0))
 	var maximum := maxf(1.0, float(state.get("max_hp", 100.0)))
 	_health.max_value = maximum
 	_health.value = hp
 	_health_text.text = "生命  %d / %d" % [int(hp), int(maximum)]
-	_stats.text = "Lv.%d    经验 %d    金币 %d" % [int(state.get("level", 1)), int(state.get("xp", 0)), int(state.get("coins", 0))]
-	_equipment.text = "武器  ·  " + str(state.get("weapon_name", state.get("equipped_name", "旅人短剑")))
+	_stats.text = "Lv.%d    经验 %d    报酬 %d" % [int(state.get("level", 1)), int(state.get("xp", 0)), int(state.get("coins", 0))]
+	_equipment.text = "武器  ·  " + str(state.get("weapon_name", state.get("equipped_name", "破拆撬棍")))
 	var relic_name := str(state.get("relic_name", "未装备"))
 	if relic_name.is_empty():
 		relic_name = "未装备"
 	var charge := int(state.get("relic_charge", 0))
-	_relic.text = "遗物  ·  " + relic_name + ("  /  蓄能 %d" % charge if charge > 0 else "")
+	_relic.text = "异常物  ·  " + relic_name + ("  /  蓄能 %d" % charge if charge > 0 else "")
 	_relic.add_theme_color_override("font_color", TEAL if relic_name != "未装备" else MUTED)
-	_objective.text = str(state.get("objective", "探索野外，寻找通往遗迹的入口。"))
+	_objective.text = str(state.get("objective", "穿过雾区，找到废弃设施的入口。"))
 	var interaction_text := str(state.get("interaction", ""))
 	_interaction.text = "[ E ]  " + interaction_text
 	_interaction.visible = not interaction_text.is_empty()
@@ -136,28 +141,37 @@ func update_hud(state: Dictionary) -> void:
 
 func _make_theme() -> Theme:
 	var theme := Theme.new()
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["Microsoft YaHei", "Noto Sans CJK SC", "Arial"])
-	theme.default_font = font
-	theme.default_font_size = 16
+	theme.default_font = Art.font()
+	theme.default_font_size = Art.font_size(12)
 	theme.set_color("font_color", "Label", PAPER)
 	theme.set_color("font_color", "Button", PAPER)
 	theme.set_color("font_hover_color", "Button", Color.WHITE)
 	theme.set_color("font_pressed_color", "Button", PAPER)
 	theme.set_color("font_disabled_color", "Button", MUTED)
-	theme.set_stylebox("normal", "Button", _box(PANEL_LIGHT, LINE, 8, 14, 10))
-	theme.set_stylebox("hover", "Button", _box(Color("31515a"), TEAL, 8, 14, 10))
-	theme.set_stylebox("pressed", "Button", _box(Color("102127"), GOLD, 8, 14, 10))
-	theme.set_stylebox("disabled", "Button", _box(Color("1a3036"), LINE, 8, 14, 10))
-	theme.set_stylebox("focus", "Button", _box(Color(0, 0, 0, 0), GOLD, 8, 14, 10))
-	theme.set_stylebox("normal", "LineEdit", _box(Color("102329"), LINE, 6, 12, 10))
-	theme.set_stylebox("focus", "LineEdit", _box(Color("102329"), TEAL, 6, 12, 10))
+	theme.set_stylebox("normal", "Button", _box(Color("2a3a40"), INK, 14, 10))
+	theme.set_stylebox("hover", "Button", _box(Color("35494f"), GOLD, 14, 10))
+	theme.set_stylebox("pressed", "Button", PixelUI.box(Color("172226"), GOLD, 14, 10, true))
+	theme.set_stylebox("disabled", "Button", _box(Color("1a2529"), INK, 14, 10))
+	theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	theme.set_stylebox("normal", "LineEdit", PixelUI.box(Color("0f171a"), INK, 12, 10, true))
+	theme.set_stylebox("focus", "LineEdit", PixelUI.box(Color("0f171a"), TEAL, 12, 10, true))
 	theme.set_color("font_color", "LineEdit", PAPER)
 	theme.set_color("font_placeholder_color", "LineEdit", MUTED)
 	theme.set_color("caret_color", "LineEdit", GOLD)
-	theme.set_stylebox("background", "ProgressBar", _box(Color("102127"), Color("102127"), 4, 0, 0))
-	theme.set_stylebox("fill", "ProgressBar", _box(TEAL, TEAL, 4, 0, 0))
+	theme.set_stylebox("background", "ProgressBar", PixelUI.box(Color("1b1012"), INK, 0, 0, true))
+	theme.set_stylebox("fill", "ProgressBar", PixelUI.bar(Color("7fc7a8")))
+	theme.set_stylebox("separator", "HSeparator", _separator())
+	theme.set_constant("separation", "HSeparator", 12)
 	return theme
+
+
+func _separator() -> StyleBoxTexture:
+	var style := StyleBoxTexture.new()
+	style.texture = PixelUI.hazard_strip()
+	style.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_TILE
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
+	return style
 
 
 func _build_menu() -> void:
@@ -168,10 +182,12 @@ func _build_menu() -> void:
 	background.color = INK
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_menu.add_child(background)
-	var top_rule := ColorRect.new()
-	top_rule.color = GOLD
+	_menu.add_child(Backdrop.new())
+	var top_rule := TextureRect.new()
+	top_rule.texture = PixelUI.hazard_strip()
+	top_rule.stretch_mode = TextureRect.STRETCH_TILE
 	top_rule.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	top_rule.offset_bottom = 3
+	top_rule.offset_bottom = 6
 	top_rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_menu.add_child(top_rule)
 	var center := CenterContainer.new()
@@ -184,38 +200,46 @@ func _build_menu() -> void:
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 44)
 	center.add_child(columns)
+	var intro_panel := PanelContainer.new()
+	intro_panel.add_theme_stylebox_override("panel", _box(Color(0.05, 0.08, 0.09, 0.82), INK, 28, 24))
+	columns.add_child(intro_panel)
 	var intro := VBoxContainer.new()
 	intro.custom_minimum_size.x = 470
 	intro.add_theme_constant_override("separation", 15)
-	columns.add_child(intro)
-	intro.add_child(_label("CO-OP EXPLORATION RPG  /  开发原型", 13, TEAL))
-	intro.add_child(_label("MISTBOUND", 50, PAPER))
-	intro.add_child(_label("雾境寻宝者", 29, GOLD))
+	intro_panel.add_child(intro)
+	intro.add_child(_label("CO-OP RECOVERY RPG  /  开发原型", 13, TEAL))
+	var logotype := TextureRect.new()
+	logotype.texture = PixelUI.logotype("MISTBOUND", 6, PAPER, Color("2c4a46"))
+	logotype.stretch_mode = TextureRect.STRETCH_KEEP
+	logotype.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	intro.add_child(logotype)
+	intro.add_child(_label("雾区回收队", 29, GOLD))
 	var spacer := Control.new()
 	spacer.custom_minimum_size.y = 8
 	intro.add_child(spacer)
-	intro.add_child(_wrapped_label("迷雾之外，仍有宝藏。", 23, PAPER, 450))
-	intro.add_child(_wrapped_label("和伙伴走出营地，发现遗迹。\n在一次次冒险中积攒属于你的力量。", 17, MUTED, 450))
+	intro.add_child(_wrapped_label("进去，找到它，活着带出来。", 23, PAPER, 450))
+	intro.add_child(_wrapped_label("雾里的设施早已废弃，留下的东西却没有安静下来。\n组队进入，把异常物带回前哨。", 17, MUTED, 450))
 	var features := VBoxContainer.new()
 	features.add_theme_constant_override("separation", 16)
 	features.add_theme_stylebox_override("panel", _box(PANEL, LINE))
 	intro.add_child(features)
-	features.add_child(_label("01   公共地图     探索相连的营地与野外", 16, PAPER))
-	features.add_child(_label("02   小型副本     挑战矿井与遗迹的守卫", 16, PAPER))
-	features.add_child(_label("03   长期养成     拾取战利品，保存角色成长", 16, PAPER))
-	intro.add_child(_wrapped_label("1–4 人好友合作  ·  装备成长  ·  随时保存", 13, MUTED, 450))
+	features.add_child(_label("01   前哨雾区     从前哨出发，深入相连的雾区", 16, PAPER))
+	features.add_child(_label("02   废弃设施     排除采样井与实验室的守卫者", 16, PAPER))
+	features.add_child(_label("03   回收履历     回收异常物，保存回收员成长", 16, PAPER))
+	intro.add_child(_wrapped_label("1–4 人小队协作  ·  装备成长  ·  随时保存", 13, MUTED, 450))
 	var session_panel := PanelContainer.new()
 	session_panel.custom_minimum_size.x = 378
-	session_panel.add_theme_stylebox_override("panel", _box(PANEL, LINE, 14, 25, 25))
+	session_panel.add_theme_stylebox_override("panel", _box(PANEL, LINE, 25, 25))
 	columns.add_child(session_panel)
 	var session_box := VBoxContainer.new()
 	session_box.add_theme_constant_override("separation", 13)
 	session_panel.add_child(session_box)
-	session_box.add_child(_label("开始旅程", 24, PAPER))
-	session_box.add_child(_label("选择独自探索，或与朋友同行。", 14, MUTED))
-	var solo := _button("单人探索", 48)
-	solo.add_theme_stylebox_override("normal", _box(GOLD, GOLD, 8, 14, 10))
-	solo.add_theme_stylebox_override("hover", _box(Color("ecd09b"), Color("ecd09b"), 8, 14, 10))
+	session_box.add_child(_label("开始任务", 24, PAPER))
+	session_box.add_child(_label("独自进入雾区，或与队友一起出发。", 14, MUTED))
+	var solo := _button("单人行动", 48)
+	solo.add_theme_stylebox_override("normal", _box(GOLD, INK, 14, 10))
+	solo.add_theme_stylebox_override("hover", _box(Color("f6da85"), INK, 14, 10))
+	solo.add_theme_font_size_override("font_size", Art.font_size(24))
 	solo.add_theme_color_override("font_color", INK)
 	solo.add_theme_color_override("font_hover_color", INK)
 	solo.pressed.connect(func() -> void: solo_requested.emit())
@@ -253,7 +277,7 @@ func _build_menu() -> void:
 	_status = _wrapped_label("", 14, GOLD, 328)
 	_status.custom_minimum_size.y = 52
 	session_box.add_child(_status)
-	var footer := _label("PROTOTYPE 0.2    /    公共地图 · 小副本 · 长期养成", 12, MUTED)
+	var footer := _label("PROTOTYPE 0.2    /    前哨雾区 · 废弃设施 · 回收履历", 12, MUTED)
 	footer.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	footer.offset_top = -28
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -281,7 +305,7 @@ func _build_hud() -> void:
 	top.offset_top = 16
 	top.offset_bottom = 90
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_theme_stylebox_override("panel", _box(Color("14262eee"), LINE, 10, 18, 12))
+	top.add_theme_stylebox_override("panel", _box(Color(PANEL, 0.94), LINE, 18, 12))
 	_hud.add_child(top)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 22)
@@ -291,9 +315,9 @@ func _build_hud() -> void:
 	location.custom_minimum_size.x = 220
 	location.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(location)
-	_zone = _label("旅人营地", 21, PAPER)
+	_zone = _label("雾线前哨", 21, PAPER)
 	location.add_child(_zone)
-	_session = _label("单人探索 · 1 / 4 人", 12, MUTED)
+	_session = _label("单人行动 · 1 / 4 人", 12, MUTED)
 	location.add_child(_session)
 	var vitals := VBoxContainer.new()
 	vitals.custom_minimum_size.x = 210
@@ -311,13 +335,13 @@ func _build_hud() -> void:
 	character.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	character.add_theme_constant_override("separation", 1)
 	row.add_child(character)
-	_stats = _label("Lv.1    经验 0    金币 0", 14, GOLD)
+	_stats = _label("Lv.1    经验 0    报酬 0", 14, GOLD)
 	character.add_child(_stats)
-	_equipment = _label("武器 · 旅人短剑", 12, MUTED)
+	_equipment = _label("武器 · 破拆撬棍", 12, MUTED)
 	character.add_child(_equipment)
-	_relic = _label("遗物 · 未装备", 12, MUTED)
+	_relic = _label("异常物 · 未装备", 12, MUTED)
 	character.add_child(_relic)
-	var inventory_button := _button("背包  I", 40)
+	var inventory_button := _button("装备箱  I", 40)
 	inventory_button.pressed.connect(toggle_inventory)
 	row.add_child(inventory_button)
 	var save := _button("保存", 40)
@@ -330,14 +354,14 @@ func _build_hud() -> void:
 	objective_panel.position = Vector2(20, 105)
 	objective_panel.custom_minimum_size.x = 315
 	objective_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	objective_panel.add_theme_stylebox_override("panel", _box(Color("14262edb"), LINE, 9, 16, 12))
+	objective_panel.add_theme_stylebox_override("panel", _box(Color(PANEL, 0.88), LINE, 16, 12))
 	_hud.add_child(objective_panel)
 	var objective_box := VBoxContainer.new()
 	objective_box.add_theme_constant_override("separation", 7)
 	objective_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	objective_panel.add_child(objective_box)
-	objective_box.add_child(_label("探索日志", 13, GOLD))
-	_objective = _wrapped_label("探索野外，寻找通往遗迹的入口。", 14, PAPER, 285)
+	objective_box.add_child(_label("任务简报", 13, GOLD))
+	_objective = _wrapped_label("穿过雾区，找到废弃设施的入口。", 14, PAPER, 285)
 	objective_box.add_child(_objective)
 	var bottom := PanelContainer.new()
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
@@ -346,12 +370,12 @@ func _build_hud() -> void:
 	bottom.offset_top = -53
 	bottom.offset_bottom = -16
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bottom.add_theme_stylebox_override("panel", _box(Color("14262ee8"), LINE, 8, 10, 8))
+	bottom.add_theme_stylebox_override("panel", _box(Color(PANEL, 0.9), LINE, 10, 8))
 	_hud.add_child(bottom)
-	var controls := _label("WASD  移动     左键  攻击     空格  闪避     Q  切换武器     E  交互     I / Esc  背包", 13, MUTED)
+	var controls := _label("WASD  移动     左键  攻击     空格  闪避     Q  切换武器     E  交互     I / Esc  装备箱", 13, MUTED)
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bottom.add_child(controls)
-	_interaction = _label("", 19, GOLD)
+	_interaction = _label("", 24, GOLD)
 	_interaction.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_interaction.offset_top = -105
 	_interaction.offset_bottom = -68
@@ -360,7 +384,7 @@ func _build_hud() -> void:
 	_interaction.add_theme_constant_override("shadow_offset_x", 2)
 	_interaction.add_theme_constant_override("shadow_offset_y", 2)
 	_hud.add_child(_interaction)
-	_toast = _label("", 17, PAPER)
+	_toast = _label("", 24, PAPER)
 	_toast.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_toast.offset_top = 110
 	_toast.offset_left = 355
@@ -381,20 +405,20 @@ func _build_inventory() -> void:
 	_inventory_panel.offset_right = -20
 	_inventory_panel.offset_top = 104
 	_inventory_panel.offset_bottom = -66
-	_inventory_panel.add_theme_stylebox_override("panel", _box(Color("172b31fa"), LINE, 12, 20, 18))
+	_inventory_panel.add_theme_stylebox_override("panel", _box(Color(PANEL, 0.97), LINE, 20, 18))
 	_root.add_child(_inventory_panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
 	_inventory_panel.add_child(box)
 	var heading := HBoxContainer.new()
 	box.add_child(heading)
-	var title := _label("旅人背包", 23, PAPER)
+	var title := _label("回收装备箱", 23, PAPER)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.add_child(title)
 	var close := _button("关闭  I / Esc", 34)
 	close.pressed.connect(toggle_inventory)
 	heading.add_child(close)
-	box.add_child(_wrapped_label("一把武器，一件遗物。自由搭配你的战斗方式。", 14, MUTED, 360))
+	box.add_child(_wrapped_label("一把武器，一件异常物。自由搭配你的作业方式。", 14, MUTED, 360))
 	box.add_child(HSeparator.new())
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -404,7 +428,7 @@ func _build_inventory() -> void:
 	_inventory_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_inventory_list.add_theme_constant_override("separation", 10)
 	scroll.add_child(_inventory_list)
-	box.add_child(_wrapped_label("联机时打开背包不会暂停世界。", 12, MUTED, 360))
+	box.add_child(_wrapped_label("联机时打开装备箱不会暂停世界。", 12, MUTED, 360))
 	_inventory_panel.hide()
 
 
@@ -413,10 +437,10 @@ func _refresh_inventory() -> void:
 		_inventory_list.remove_child(child)
 		child.queue_free()
 	if _inventory.is_empty():
-		_inventory_list.add_child(_wrapped_label("背包暂时为空。走出营地，寻找你的第一份战利品。", 15, MUTED, 340))
+		_inventory_list.add_child(_wrapped_label("装备箱暂时为空。离开前哨，回收你的第一件物品。", 15, MUTED, 340))
 		return
 	for slot: String in ["weapon", "relic"]:
-		var heading := "武器 / 攻击方式" if slot == "weapon" else "遗物 / 被动效果"
+		var heading := "武器 / 攻击方式" if slot == "weapon" else "异常物 / 被动效果"
 		_inventory_list.add_child(_label(heading, 13, MUTED))
 		var count_in_slot := 0
 		for entry in _inventory:
@@ -428,13 +452,13 @@ func _refresh_inventory() -> void:
 			count_in_slot += 1
 			_add_inventory_card(item, slot)
 		if count_in_slot == 0:
-			_inventory_list.add_child(_wrapped_label("探索副本，寻找你的第一件遗物。" if slot == "relic" else "尚未获得武器。", 14, MUTED, 300))
+			_inventory_list.add_child(_wrapped_label("进入废弃设施，回收你的第一件异常物。" if slot == "relic" else "尚未获得武器。", 14, MUTED, 300))
 
 
 func _add_inventory_card(item: Dictionary, slot: String) -> void:
 	var equipped := bool(item.get("equipped", false))
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", _box(PANEL_LIGHT, TEAL if equipped else LINE, 8, 14, 12))
+	card.add_theme_stylebox_override("panel", _box(PANEL_LIGHT, TEAL if equipped else LINE, 14, 12))
 	_inventory_list.add_child(card)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 7)
@@ -443,9 +467,9 @@ func _add_inventory_card(item: Dictionary, slot: String) -> void:
 	var count := int(item.get("count", 1))
 	box.add_child(_wrapped_label("%s  ×%d" % [name_text, count], 17, GOLD, 300))
 	box.add_child(_wrapped_label(str(item.get("description", "")), 13, MUTED, 300))
-	var action_text := "装备武器" if slot == "weapon" else "装备遗物"
+	var action_text := "装备武器" if slot == "weapon" else "装备异常物"
 	if equipped:
-		action_text = "已装备" if slot == "weapon" else "卸下遗物"
+		action_text = "已装备" if slot == "weapon" else "卸下异常物"
 	var equip := _button(action_text, 34)
 	equip.disabled = equipped and slot == "weapon"
 	equip.pressed.connect(_emit_equip.bind("" if equipped and slot == "relic" else str(item.get("id", ""))))
@@ -459,7 +483,7 @@ func _emit_equip(item_id: String) -> void:
 func _label(text: String, size: int = 16, color: Color = PAPER) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_font_size_override("font_size", Art.font_size(size))
 	label.add_theme_color_override("font_color", color)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
@@ -481,14 +505,5 @@ func _button(text: String, height: float = 42) -> Button:
 	return button
 
 
-func _box(color: Color, border: Color, radius: int = 8, horizontal_padding: int = 14, vertical_padding: int = 10) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = color
-	style.border_color = border
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(radius)
-	style.content_margin_left = horizontal_padding
-	style.content_margin_right = horizontal_padding
-	style.content_margin_top = vertical_padding
-	style.content_margin_bottom = vertical_padding
-	return style
+func _box(color: Color, border: Color, horizontal_padding: int = 14, vertical_padding: int = 10) -> StyleBoxTexture:
+	return PixelUI.box(color, border, horizontal_padding, vertical_padding)

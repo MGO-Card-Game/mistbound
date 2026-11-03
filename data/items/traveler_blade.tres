@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1")
 id = "traveler_blade"
-display_name = "旅人短刃"
-description = "近战短刃：基础伤害 22，攻击间隔 0.38 秒，攻击距离 85。挥击命中前方敌人。"
+display_name = "破拆撬棍"
+description = "近战撬棍：基础伤害 22，攻击间隔 0.38 秒，攻击距离 85。挥击命中前方敌人。"
 damage_bonus = 0.0
 color = Color(0.72, 0.82, 0.88, 1)
 slot = "weapon"

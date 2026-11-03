@@ -5,28 +5,29 @@ const Simulation = preload("res://scripts/systems/world_simulation.gd")
 const Session = preload("res://scripts/systems/game_session.gd")
 const Interface = preload("res://scripts/ui/game_ui.gd")
 const Catalog = preload("res://scripts/systems/item_catalog.gd")
+const Stage = preload("res://scripts/world/pixel_stage.gd")
 
 var simulation: Node2D
 var session: Node
 var ui: CanvasLayer
-var camera: Camera2D
+var stage: Node
 var _input_timer: float = 0.0
 var _hud_timer: float = 0.0
+var _snap_view := true
+var _view_epoch := -1
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
+	stage = Stage.new()
+	stage.name = "Stage"
+	add_child(stage)
 	simulation = Simulation.new()
 	simulation.name = "World"
-	add_child(simulation)
+	stage.world_root.add_child(simulation)
 	session = Session.new()
 	session.name = "Session"
 	add_child(session)
 	session.configure(simulation)
-	camera = Camera2D.new()
-	camera.position_smoothing_enabled = true
-	camera.position_smoothing_speed = 8.0
-	camera.zoom = Vector2(0.95, 0.95)
-	add_child(camera)
 	ui = Interface.new()
 	add_child(ui)
 	ui.solo_requested.connect(func(): session.start_solo())
@@ -36,11 +37,11 @@ func _ready() -> void:
 	ui.equip_requested.connect(func(id: String): session.action("equip", id))
 	ui.save_requested.connect(func():
 		if session.save_now():
-			ui.notify("角色进度已保存" if session.mode == "client" else "角色和世界进度已保存"))
+			ui.notify("回收员档案已保存" if session.mode == "client" else "回收员档案和雾区记录已保存"))
 	session.started.connect(func():
 		ui.show_game()
 		_update_hud()
-		camera.reset_smoothing())
+		_snap_view = true)
 	session.ended.connect(func(reason: String): ui.show_menu(reason))
 	session.message.connect(func(text: String):
 		if ui.is_menu_open():
@@ -66,12 +67,13 @@ func _process(delta: float) -> void:
 	var id: int = session.local_id
 	if simulation.players.has(id):
 		var actor: Node2D = simulation.players[id].actor
-		var bounds: Rect2 = simulation.zone.get_walk_rect()
-		camera.limit_left = int(bounds.position.x)
-		camera.limit_top = int(bounds.position.y)
-		camera.limit_right = int(bounds.end.x)
-		camera.limit_bottom = int(bounds.end.y)
-		camera.position = actor.position
+		# A zone change teleports the party; jump the view instead of gliding across.
+		if simulation.epoch != _view_epoch:
+			_view_epoch = simulation.epoch
+			_snap_view = true
+		stage.follow(actor.position, simulation.zone.get_walk_rect(), delta, _snap_view)
+		_snap_view = false
+		_update_stage(id)
 		for drop in simulation.loot.values():
 			drop.actor.visible = int(drop.owner) == id
 		if _input_timer >= 0.033:
@@ -81,10 +83,23 @@ func _process(delta: float) -> void:
 			if not ui.blocks_gameplay_input():
 				motion = Vector2(float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)), float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W))).normalized()
 				attacking = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and get_viewport().gui_get_hovered_control() == null
-			session.send_input(motion, get_global_mouse_position() - actor.position, attacking)
+			session.send_input(motion, stage.screen_to_world(get_viewport().get_mouse_position()) - actor.position, attacking)
 	if _hud_timer >= 0.1:
 		_hud_timer = 0.0
 		_update_hud()
+
+func _update_stage(local_id: int) -> void:
+	var zone: Node2D = simulation.zone
+	var labels: Array = zone.get_labels()
+	var lights: Array = zone.get_lights()
+	for id in simulation.players:
+		if id != local_id:
+			lights.append({"position": simulation.players[id].actor.position, "radius": 170.0})
+	for child in simulation.actors.get_children():
+		if child.visible and child.has_method("get_overlay_labels"):
+			labels.append_array(child.get_overlay_labels())
+	stage.set_labels(labels)
+	stage.update_fog(simulation.current_zone, simulation.players[local_id].actor.position, lights)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not session.active or not (event is InputEventKey) or not event.pressed or event.echo:
@@ -129,12 +144,12 @@ func _update_hud() -> void:
 				"equipped": profile.equipped_weapon == item.id or profile.equipped_relic == item.id})
 	var objective: String
 	match simulation.current_zone:
-		"camp": objective = "Q 切换剑与弩，I 查看武器和遗物。沿石路向北按 E 进入林地。"
-		"wilds": objective = "探索林地：西北通往琥珀矿井，东北通往回声地窟。房主开启入口。"
-		_: objective = "避开首领的冲锋走廊和重击圆圈。拾取遗物后在背包装备，再挑战一轮。"
+		"camp": objective = "Q 切换撬棍与射钉枪，I 查看装备和异常物。沿道路向北按 E 进入外环雾区。"
+		"wilds": objective = "穿过外环雾区：西北通往 7 号采样井，东北通往回声声学实验室。由房主开启闸门。"
+		_: objective = "避开守卫者的冲锋走廊和重击范围。回收异常物后在装备箱中装备，再执行一轮任务。"
 	var weapon: Resource = Catalog.get_item(profile.equipped_weapon)
 	var relic: Resource = Catalog.get_item(profile.equipped_relic)
-	ui.update_hud({"zone_title": simulation.zone.get_title(), "mode": {"offline": "单人探索", "host": "房主", "client": "好友房间"}[session.mode],
+	ui.update_hud({"zone_title": simulation.zone.get_title(), "mode": {"offline": "单人行动", "host": "房主", "client": "好友房间"}[session.mode],
 		"player_count": simulation.players.size(), "hp": player.hp, "max_hp": player.max_hp,
 		"coins": profile.coins, "level": mini(20, 1 + int(profile.xp) / 40), "xp": profile.xp,
 		"weapon_name": weapon.display_name, "weapon_kind": weapon.weapon_kind,

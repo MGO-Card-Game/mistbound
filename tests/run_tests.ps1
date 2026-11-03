@@ -42,6 +42,7 @@ try {
     Complete-TestGodot (Start-TestGodot 'persistence' @('--script', 'res://tests/test_persistence.gd')) '0 failures'
     Complete-TestGodot (Start-TestGodot 'gameplay' @('--script', 'res://tests/test_gameplay.gd')) '0 failures'
     Complete-TestGodot (Start-TestGodot 'combat' @('--script', 'res://tests/test_combat.gd')) '0 failures'
+    Complete-TestGodot (Start-TestGodot 'art' @('--script', 'res://tests/test_art.gd')) 'art: 0 failures'
     Complete-TestGodot (Start-TestGodot 'enemy-brain' @('--script', 'res://tests/test_enemy_brain.gd')) 'PASS enemy brain'
     $taskPort = Get-Random -Minimum 25000 -Maximum 45000
     $taskHost = Start-TestGodot 'network-host' @('--script', 'res://tests/network_peer.gd', '--', '--test-role=host', "--test-port=$taskPort")

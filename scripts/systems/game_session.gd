@@ -157,7 +157,7 @@ func _peer_disconnected(id: int) -> void:
 	if mode == "host" and simulation.players.has(id):
 		simulation.remove_player(id)
 		_broadcast_snapshot(true)
-		_on_notice(0, "一名旅人离开了队伍")
+		_on_notice(0, "一名回收员离开了小队")
 
 func _connected() -> void:
 	if mode != "client":
@@ -179,7 +179,7 @@ func _register_player(version: int, profile: Dictionary) -> void:
 	_pending.erase(sender)
 	simulation.add_player(sender, Catalog.sanitize_profile(profile))
 	_broadcast_snapshot(true)
-	_on_notice(0, "一名旅人加入了队伍")
+	_on_notice(0, "一名回收员加入了小队")
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 1)
 func _submit_input(input_epoch: int, motion: Vector2, aim: Vector2, attack: bool) -> void:

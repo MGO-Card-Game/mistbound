@@ -122,7 +122,7 @@ func enter_zone(zone_id: String) -> void:
 		enemies[_next_id] = {"actor": actor, "kind": kind, "hp": maximum, "max_hp": maximum,
 			"cooldown": 0.8, "windup": 0.0, "home": spawn.position}
 		Brain.initialize(enemies[_next_id])
-	notice.emit(0, "抵达%s · 探索进度已记录" % zone.get_title())
+	notice.emit(0, "抵达%s · 区域记录已更新" % zone.get_title())
 	checkpoint.emit()
 
 func set_input(peer_id: int, motion: Vector2, aim: Vector2, attack: bool) -> void:
@@ -155,7 +155,7 @@ func _equip(peer_id: int, item_id: String) -> void:
 	if item_id.is_empty():
 		player.profile.equipped_relic = ""
 		player.relic_charge = 0
-		notice.emit(peer_id, "已卸下遗物")
+		notice.emit(peer_id, "已卸下异常物")
 	elif int(player.profile.inventory.get(item_id, 0)) > 0 and Catalog.get_item(item_id) != null:
 		var item: Resource = Catalog.get_item(item_id)
 		if item.slot == "weapon":
@@ -216,7 +216,7 @@ func _hurt_player(peer_id: int, damage: float) -> void:
 		player.dash_time = 0.0
 		player.invulnerability = 1.2
 		player.profile.coins = maxi(0, int(player.profile.coins) - 5)
-		notice.emit(peer_id, "在区域入口重生 · 损失 5 金币，装备保留")
+		notice.emit(peer_id, "在区域入口被救回 · 扣除 5 报酬，装备保留")
 		checkpoint.emit()
 
 func _defeat_enemy(enemy_id: int) -> void:
@@ -236,7 +236,7 @@ func _defeat_enemy(enemy_id: int) -> void:
 		index += 1
 	if boss:
 		world_data.boss_kills = mini(Catalog.MAX_CURRENCY, int(world_data.get("boss_kills", 0)) + 1)
-		notice.emit(0, "首领已击败！靠近自己的金色掉落按 E 拾取遗物")
+		notice.emit(0, "守卫者已排除！靠近自己的金色标记按 E 回收异常物")
 	_destroy(enemy.actor)
 	enemies.erase(enemy_id)
 	checkpoint.emit()
@@ -247,6 +247,7 @@ func _spawn_loot(owner: int, point: Vector2, coins: int, item_id: String) -> voi
 	view.position = point
 	if item_id != "":
 		view.tint = Catalog.get_item(item_id).color
+		view.anomaly = true
 	actors.add_child(view)
 	loot[_next_id] = {"actor": view, "owner": owner, "coins": coins, "item_id": item_id}
 
@@ -256,11 +257,11 @@ func _interact(peer_id: int) -> void:
 		var drop: Dictionary = loot[id]
 		if int(drop.owner) == peer_id and player.actor.position.distance_to(drop.actor.position) <= 65.0:
 			player.profile.coins = mini(Catalog.MAX_CURRENCY, int(player.profile.coins) + int(drop.coins))
-			var label := "+%d 金币" % int(drop.coins)
+			var label := "+%d 报酬" % int(drop.coins)
 			if str(drop.item_id) != "":
 				var inventory: Dictionary = player.profile.inventory
 				inventory[drop.item_id] = mini(Catalog.MAX_ITEM_COUNT, int(inventory.get(drop.item_id, 0)) + 1)
-				label += " · " + Catalog.get_item(drop.item_id).display_name + "（I 打开背包装备）"
+				label += " · " + Catalog.get_item(drop.item_id).display_name + "（I 打开装备箱装备）"
 			notice.emit(peer_id, label)
 			_destroy(drop.actor)
 			loot.erase(id)
@@ -280,7 +281,7 @@ func interaction_for(peer_id: int) -> String:
 	var point: Vector2 = players[peer_id].actor.position
 	for id in loot:
 		if int(loot[id].owner) == peer_id and point.distance_to(loot[id].actor.position) <= 65.0:
-			return "拾取你的战利品"
+			return "回收你的物品"
 	for portal in zone.get_portals():
 		if point.distance_to(portal.position) <= float(portal.radius):
 			return "全队前往 " + str(portal.label) if peer_id == 1 else "请房主开启：" + str(portal.label)
@@ -384,6 +385,7 @@ func apply_snapshot(state: Dictionary, local_id: int) -> bool:
 			view.position = data.position
 			if str(data.item_id) != "":
 				view.tint = Catalog.get_item(data.item_id).color
+				view.anomaly = true
 			actors.add_child(view)
 			loot[id] = {"actor": view, "owner": data.owner, "coins": data.coins, "item_id": data.item_id}
 		loot[id].actor.visible = int(data.owner) == local_id

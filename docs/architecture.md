@@ -6,16 +6,20 @@
 
 | 文件 | 职责 | 常见扩展 |
 | --- | --- | --- |
-| `scenes/main.tscn`、`scripts/main.gd` | 组装世界、联机、镜头与界面；采集键鼠输入；更新 HUD | 新输入方式、镜头模式、设置菜单 |
+| `scenes/main.tscn`、`scripts/main.gd` | 组装世界、联机、像素舞台与界面；采集键鼠输入；更新 HUD、文字与雾气参数 | 新输入方式、镜头模式、设置菜单 |
+| `scripts/world/pixel_stage.gd`、`fog.gdshader` | 在 1/3 分辨率 SubViewport 渲染世界并最近邻放大；镜头按整像素吸附、余数平移画面；雾气着色器；全分辨率文字叠加层 | 分辨率/缩放、后处理、小地图 |
+| `scripts/world/zone_art.gd` | 把区域地面、道路和建筑烘焙成一张像素图并缓存；建筑覆盖碰撞矩形 | 新区域外观、TileMap 替换 |
+| `scripts/art/pixel_art.gd`、`pixel_canvas.gd` | 调色板、文本像素图精灵与染色层、受击白闪剪影；PNG 覆盖；栅格绘制工具 | 新精灵、动画帧、换成手绘素材 |
 | `scripts/systems/game_session.gd` | 单人/开房/加入/退出，ENet 与 RPC，周期快照、保存和消息通知 | 平台传输适配、邀请、重连、状态同步优化 |
 | `scripts/systems/world_simulation.gd` | 房主的实体生命周期、移动、装备、死亡、个人掉落与全队传送；组装规则并生成/应用快照 | 奖励规则、区域实例、世界进度 |
 | `scripts/systems/combat_rules.gd` | 武器冷却、剑的扇形命中、弩箭扫掠碰撞、灼烧和连锁闪电 | 新武器类别、状态效果、遗物触发 |
 | `scripts/systems/enemy_brain.gd` | 普通敌人追击/预警、首领冲锋/重击/恢复状态机 | 新敌人行为、首领招式 |
-| `scripts/world/zone_view.gd` | 根据区域 ID 生成静态地图、碰撞、入口和敌人出生点；程序化绘制地图 | 添加区域、替换 TileMap/场景、美术资源 |
-| `scripts/actors/actor_view.gd` | 玩家和敌人的碰撞体与表现；远端位置平滑 | 动画、受击反馈、客户端移动预测 |
+| `scripts/world/zone_view.gd` | 根据区域 ID 生成碰撞、入口和敌人出生点；绘制烘焙图与动态灯光、入口标记；提供地名文字和雾气光源 | 添加区域、替换 TileMap/场景、美术资源 |
+| `scripts/actors/actor_view.gd` | 玩家和敌人的碰撞体与像素精灵表现（行走帧、手持工具、受击白闪、首领过热）；远端位置平滑；向叠加层提供名字与招式提示 | 动画、受击反馈、客户端移动预测 |
 | `scripts/actors/loot_view.gd` | 个人战利品的视觉表现 | 掉落图标、稀有度光效 |
 | `scripts/actors/combat_view.gd` | 箭矢快照、命中火花与数字、闪电、冲锋和重击视觉 | 特效与音效；不计算伤害 |
-| `scripts/ui/game_ui.gd` | 主菜单、状态栏、探索提示、背包；通过信号请求动作 | 设置、地图、技能与装备详情 |
+| `scripts/ui/game_ui.gd` | 主菜单、状态栏、任务简报、装备箱；通过信号请求动作 | 设置、地图、技能与装备详情 |
+| `scripts/ui/pixel_ui.gd`、`menu_backdrop.gd` | 按 3 倍像素生成的九宫格面板、分段血条、警示条、像素标题字；主菜单雾区远景 | 主题换色、更多界面部件 |
 | `scripts/systems/item_definition.gd`、`item_catalog.gd` | 物品 Resource 数据格式、已注册物品、角色字段校验 | 新物品、装备槽、词条与技能效果 |
 | `scripts/systems/save_store.gd` | 角色/世界 JSON 分离，格式校验、备份、临时文件替换 | 版本迁移、多角色、多世界 |
 | `data/items/*.tres` | 已有三件物品的名称、描述、增伤和颜色 | 在编辑器里创建与调整物品数据 |

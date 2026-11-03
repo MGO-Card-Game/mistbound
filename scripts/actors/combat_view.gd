@@ -1,19 +1,23 @@
 class_name CombatView
 extends Node2D
 ## Cosmetic-only layer. Projectiles are snapshots; events never apply damage here.
+## Everything is drawn in whole art pixels so it matches the low-resolution stage.
 
+const Art = preload("res://scripts/art/pixel_art.gd")
 const MAX_EFFECTS := 128
 const MAX_PROJECTILES := 256
+## 3x5 bitmap digits, one row string per line ('#' = lit).
+const DIGITS := [
+	["###", "#.#", "#.#", "#.#", "###"], [".#.", "##.", ".#.", ".#.", "###"],
+	["###", "..#", "###", "#..", "###"], ["###", "..#", "###", "..#", "###"],
+	["#.#", "#.#", "###", "..#", "..#"], ["###", "#..", "###", "..#", "###"],
+	["###", "#..", "###", "#.#", "###"], ["###", "..#", ".#.", ".#.", ".#."],
+	["###", "#.#", "###", "#.#", "###"], ["###", "#.#", "###", "..#", "###"],
+]
 
 var _projectiles: Dictionary = {}
 var _effects: Array[Dictionary] = []
-var _font: SystemFont
 var _sequence := 0
-
-
-func _ready() -> void:
-	_font = SystemFont.new()
-	_font.font_names = PackedStringArray(["Microsoft YaHei", "Noto Sans CJK SC", "Arial"])
 
 
 func set_projectiles(entries: Array) -> void:
@@ -100,14 +104,13 @@ func _draw() -> void:
 
 
 func _draw_projectile(projectile: Dictionary) -> void:
+	# A steel nail: bright head, dark shank, faint motion streak.
 	var point: Vector2 = projectile.position
 	var direction: Vector2 = projectile.direction
-	var side := direction.orthogonal()
-	draw_line(point - direction * 25, point - direction * 12, Color(0.86, 0.91, 0.76, 0.3), 3, true)
-	draw_line(point - direction * 13, point + direction * 9, Color("f0d7a1"), 2.4, true)
-	draw_colored_polygon(PackedVector2Array([point + direction * 13, point + direction * 5 + side * 4, point + direction * 5 - side * 4]), Color("e5eee4"))
-	draw_line(point - direction * 12, point - direction * 18 + side * 4, Color("80c6ba"), 2, true)
-	draw_line(point - direction * 12, point - direction * 18 - side * 4, Color("80c6ba"), 2, true)
+	draw_line(point - direction * 30, point - direction * 12, Color(Art.FOG_PALE, 0.25), 3.0)
+	draw_line(point - direction * 12, point + direction * 6, Art.GRAY_LIGHT, 3.0)
+	draw_line(point + direction * 6, point + direction * 12, Art.BONE, 3.0)
+	_px(point - direction * 12, Vector2(1, 1), Art.STEEL)
 
 
 func _draw_hit(effect: Dictionary, progress: float) -> void:
@@ -123,18 +126,38 @@ func _draw_hit(effect: Dictionary, progress: float) -> void:
 	var alpha := 1.0 - progress
 	if progress < 0.35:
 		var spark_alpha := 1.0 - progress / 0.35
-		for index in range(5):
-			var direction := Vector2.from_angle(TAU * index / 5.0 + int(effect.seed) * 0.67)
-			draw_line(point + direction * (5 + progress * 20), point + direction * (11 + progress * 38), Color(color, spark_alpha), 2, true)
+		for index in range(6):
+			var direction := Vector2.from_angle(TAU * index / 6.0 + int(effect.seed) * 0.67)
+			var reach := 6.0 + progress * 70.0
+			_px(point + direction * reach, Vector2(1, 1), Color(color, spark_alpha))
+			if progress < 0.15:
+				_px(point + direction * reach * 0.5, Vector2(1, 1), Color(Art.BONE, spark_alpha))
 	var damage := maxf(0.0, float(effect.get("damage", 0.0)))
-	if _font != null and damage > 0.0:
+	if damage > 0.0:
 		var text := str(int(round(damage)))
-		var font_size := 14 if element == "burn" else 18
-		var text_width := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var drift := float(int(effect.seed) % 3 - 1) * 11
-		var at := point + Vector2(drift - text_width / 2, -23 - progress * 30)
-		draw_string(_font, at + Vector2(1, 2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.04, 0.08, 0.1, alpha * 0.9))
-		draw_string(_font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(color, alpha))
+		var cell := 1 if element == "burn" else 2
+		var width := (text.length() * 4 - 1) * cell * Art.SCALE
+		var drift := float(int(effect.seed) % 3 - 1) * 12.0
+		var at := point + Vector2(drift - width / 2.0, -36.0 - progress * 30.0)
+		_digits(text, at + Vector2(Art.SCALE, Art.SCALE), cell, Color(Art.INK, alpha * 0.9))
+		_digits(text, at, cell, Color(color, alpha))
+
+
+func _digits(text: String, at: Vector2, cell: int, color: Color) -> void:
+	var origin := (at / Art.SCALE).round() * Art.SCALE
+	for index in range(text.length()):
+		var glyph: Array = DIGITS[int(text[index])]
+		for y in range(5):
+			var row: String = glyph[y]
+			for x in range(3):
+				if row[x] == "#":
+					var offset := Vector2(index * 4 + x, y) * cell * Art.SCALE
+					draw_rect(Rect2(origin + offset, Vector2.ONE * cell * Art.SCALE), color)
+
+
+## Draws `size` art pixels at a world point snapped to the pixel grid.
+func _px(world: Vector2, size: Vector2, color: Color) -> void:
+	draw_rect(Rect2((world / Art.SCALE).round() * Art.SCALE, size * Art.SCALE), color)
 
 
 func _draw_chain(effect: Dictionary, progress: float) -> void:
@@ -142,20 +165,18 @@ func _draw_chain(effect: Dictionary, progress: float) -> void:
 	for segment: PackedVector2Array in effect.get("segments", []):
 		if segment.size() < 2:
 			continue
-		draw_polyline(segment, Color(0.31, 0.7, 1.0, alpha * 0.2), 10, true)
-		draw_polyline(segment, Color(0.54, 0.89, 1.0, alpha), 3, true)
-		draw_polyline(segment, Color(0.94, 1.0, 1.0, alpha), 1, true)
-		draw_circle(segment[-1], 8 * (1.0 - progress), Color(0.7, 0.95, 1.0, alpha * 0.4))
+		draw_polyline(segment, Color(0.31, 0.7, 1.0, alpha * 0.25), 9.0)
+		draw_polyline(segment, Color(0.94, 1.0, 1.0, alpha), 3.0)
+		draw_circle(segment[-1], 9 * (1.0 - progress), Color(0.7, 0.95, 1.0, alpha * 0.4))
 
 
 func _draw_shot(effect: Dictionary, progress: float) -> void:
 	var point: Vector2 = effect.position
 	var direction := _event_direction(effect)
 	var alpha := 1.0 - progress
-	draw_line(point, point + direction * (18 + progress * 22), Color(1.0, 0.9, 0.61, alpha), 3 * alpha + 1, true)
+	draw_line(point, point + direction * (18 + progress * 22), Color(1.0, 0.9, 0.61, alpha), 3.0)
 	for side in [-1, 1]:
-		var end := point + direction.rotated(0.5 * side) * (10 + progress * 12)
-		draw_line(point, end, Color(1.0, 0.9, 0.61, alpha), 1.5, true)
+		_px(point + direction.rotated(0.6 * side) * (12 + progress * 14), Vector2(1, 1), Color(1.0, 0.9, 0.61, alpha))
 
 
 func _draw_slam(effect: Dictionary, progress: float) -> void:
@@ -164,11 +185,12 @@ func _draw_slam(effect: Dictionary, progress: float) -> void:
 	var alpha := 1.0 - progress
 	var ring := radius * (0.35 + progress * 0.65)
 	draw_circle(point, ring, Color(1.0, 0.55, 0.3, alpha * 0.08))
-	draw_arc(point, ring, 0, TAU, 64, Color(1.0, 0.72, 0.46, alpha), 4 * alpha + 1, true)
-	draw_arc(point, ring * 0.78, 0, TAU, 56, Color(1.0, 0.88, 0.66, alpha * 0.4), 1.5, true)
+	draw_arc(point, ring, 0, TAU, 48, Color(1.0, 0.72, 0.46, alpha), 6.0 if alpha > 0.5 else 3.0, false)
+	draw_arc(point, ring * 0.78, 0, TAU, 40, Color(1.0, 0.88, 0.66, alpha * 0.4), 3.0, false)
+	# Debris chunks thrown outward by the impact.
 	for index in range(10):
 		var direction := Vector2.from_angle(TAU * index / 10.0 + 0.3)
-		draw_line(point + direction * ring * 0.55, point + direction * ring * 0.88, Color(0.95, 0.57, 0.33, alpha * 0.7), 2, true)
+		_px(point + direction * ring * (0.6 + 0.3 * float(index % 2)), Vector2(1, 1), Color(Art.GRAY_LIGHT if index % 2 == 0 else Art.ORANGE, alpha * 0.9))
 
 
 func _draw_charge(effect: Dictionary, progress: float) -> void:
@@ -178,7 +200,7 @@ func _draw_charge(effect: Dictionary, progress: float) -> void:
 	var alpha := 1.0 - progress
 	for index in range(5):
 		var offset := side * (index - 2) * 13.0
-		draw_line(point + offset - direction * progress * 40, point + offset - direction * (35 + progress * 110), Color(1.0, 0.68, 0.39, alpha * 0.6), 2, true)
+		draw_line(point + offset - direction * progress * 40, point + offset - direction * (35 + progress * 110), Color(1.0, 0.68, 0.39, alpha * 0.6), 3.0)
 
 
 func _make_lightning(raw_points: Variant, seed: int) -> Array[PackedVector2Array]:

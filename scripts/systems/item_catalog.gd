@@ -51,7 +51,7 @@ static func sanitize_profile(raw: Dictionary) -> Dictionary:
 		if _owned_in_slot(raw_relic, inventory, "relic"):
 			equipped_relic = raw_relic
 	var player_name: String = ""
-	var raw_name: Variant = raw.get("name", "旅人")
+	var raw_name: Variant = raw.get("name", "回收员")
 	if raw_name is String:
 		for index: int in range(raw_name.length()):
 			var code: int = raw_name.unicode_at(index)
@@ -61,7 +61,7 @@ static func sanitize_profile(raw: Dictionary) -> Dictionary:
 				break
 	player_name = player_name.strip_edges()
 	if player_name.is_empty():
-		player_name = "旅人"
+		player_name = "回收员"
 	return {
 		"version": PROFILE_VERSION,
 		"name": player_name,
