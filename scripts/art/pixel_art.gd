@@ -249,12 +249,13 @@ static func sprite_size(sprite: String) -> Vector2:
 
 
 ## Draws a sprite with its bottom center at `foot` (world units), optionally mirrored.
+## A negative rect width mirrors the texture in place; the rect still spans rightward from its position.
 static func draw(item: CanvasItem, tex: Texture2D, foot: Vector2, flip: bool = false, modulate: Color = Color.WHITE) -> void:
 	if tex == null:
 		return
 	var size := tex.get_size() * SCALE
 	var origin := (foot / SCALE).round() * SCALE - Vector2(roundf(size.x / SCALE / 2.0) * SCALE, size.y)
-	item.draw_texture_rect(tex, Rect2(origin + Vector2(size.x if flip else 0.0, 0.0), Vector2(-size.x if flip else size.x, size.y)), false, modulate)
+	item.draw_texture_rect(tex, Rect2(origin, Vector2(-size.x if flip else size.x, size.y)), false, modulate)
 
 
 static func validate() -> PackedStringArray:
