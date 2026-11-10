@@ -144,12 +144,36 @@ func _host_step() -> void:
 					if id != 1 and not _has_saved_loadout(sim.players[id].profile):
 						_fail("reconnected guest lost rewards or separate equipment slots")
 						return
+				# Hand the rejoined guest a full haul, then lead the party home to bank it.
+				var returning: Dictionary = sim.players[_guest()]
+				if not returning.profile.blueprints.has("hydraulic_cutter"):
+					_fail("rejoined guest lost the blueprint from the boss drop")
+					return
+				returning.haul = {"scrap_metal": 10, "core_sample": 6}
+				sim.enter_zone("camp")
 				_advance(6)
 		6:
+			if not sim.players.has(_guest()):
+				_fail("guest disconnected before crafting")
+				return
+			var crafter: Dictionary = sim.players[_guest()]
+			crafter.actor.position = sim.zone.get_stations()[0].position
+			if int(crafter.profile.inventory.get("hydraulic_cutter", 0)) >= 1:
+				if not crafter.haul.is_empty() or crafter.profile.inventory.has("core_sample") or int(crafter.profile.coins) < 6:
+					_fail("guest craft did not consume banked materials and coins correctly")
+					return
+				_advance(7)
+		7:
 			if phase_time > 0.7:
 				game.session.stop("test host shutdown")
-				print("NETWORK HOST PASS: movement, ranged RPC combat, boss warning, real relic drop, separate slots, rejoin")
+				print("NETWORK HOST PASS: movement, ranged RPC combat, boss warning, real relic drop, separate slots, rejoin, guest crafting")
 				quit(0)
+
+func _guest() -> int:
+	for id in game.simulation.players:
+		if id != 1:
+			return id
+	return 0
 
 func _remove_other_enemies(keep: int) -> void:
 	var sim: Node = game.simulation
@@ -195,7 +219,7 @@ func _observe_client_presentation() -> void:
 func _client_step(delta: float) -> void:
 	var sim: Node = game.simulation
 	var session: Node = game.session
-	if phase >= 1 and phase <= 7 and not session.active:
+	if ((phase >= 1 and phase <= 7) or phase == 10) and not session.active:
 		_fail("unexpected disconnection during active scenario")
 		return
 	match phase:
@@ -262,20 +286,32 @@ func _client_step(delta: float) -> void:
 				session.join("127.0.0.1", port)
 				_advance(9)
 		9:
-			if session.active and sim.current_zone == "mine":
+			# The host heads home as soon as the roster is whole again.
+			if session.active and sim.current_zone in ["mine", "camp"]:
 				if not _has_saved_loadout(sim.players[session.local_id].profile):
 					_fail("rejoin did not restore weapon/relic and confirmed rewards")
 					return
 				_advance(10)
 		10:
+			# Back at the outpost the haul is banked; craft through the real RPC.
+			var profile: Dictionary = sim.players[session.local_id].profile
+			if sim.current_zone == "camp" and int(profile.inventory.get("core_sample", 0)) >= 6:
+				interact_timer += delta
+				if interact_timer > 0.3:
+					interact_timer = 0.0
+					session.action("craft", "hydraulic_cutter")
+			if int(profile.inventory.get("hydraulic_cutter", 0)) >= 1:
+				_advance(11)
+		11:
 			if not session.active:
-				if not _has_saved_loadout(Store.load_character()):
+				var saved: Dictionary = Store.load_character()
+				if not _has_saved_loadout(saved, 6) or int(saved.inventory.get("hydraulic_cutter", 0)) < 1 or not saved.blueprints.has("hydraulic_cutter"):
 					_fail("host disconnect did not preserve confirmed character")
 					return
 				if Store.load_world().visited != ["camp"]:
 					_fail("guest overwrote its own world with host world")
 					return
-				print("NETWORK CLIENT PASS: ranged visuals, boss telegraph, personal relic, equipment slots, rejoin, own-world isolation")
+				print("NETWORK CLIENT PASS: ranged visuals, boss telegraph, personal relic, equipment slots, rejoin, crafting, own-world isolation")
 				quit(0)
 
 func _shoot_closest() -> void:
@@ -320,8 +356,8 @@ func _pickup_own_drop(delta: float, item_id: String = "") -> void:
 		if not item_id.is_empty() and closest <= 38.0:
 			session.action("equip", item_id)
 
-func _has_saved_loadout(profile: Dictionary) -> bool:
-	return int(profile.coins) >= 46 and profile.equipped_weapon == "hunter_crossbow" and profile.equipped_relic == "ember_relic" and int(profile.inventory.get("ember_relic", 0)) >= 1
+func _has_saved_loadout(profile: Dictionary, minimum_coins: int = 46) -> bool:
+	return int(profile.coins) >= minimum_coins and profile.equipped_weapon == "hunter_crossbow" and profile.equipped_relic == "ember_relic" and int(profile.inventory.get("ember_relic", 0)) >= 1
 
 func _fail(reason: String) -> void:
 	if failed:

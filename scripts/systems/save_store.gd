@@ -72,7 +72,7 @@ static func _read_valid(path: String, world: bool) -> Dictionary:
 		if version != WORLD_VERSION or not data.get("visited") is Array or not _is_number(data.get("boss_kills")):
 			return {}
 	else:
-		if version != 1 and version != CHARACTER_VERSION:
+		if version != 1 and version != 2 and version != CHARACTER_VERSION:
 			return {}
 		if not data.get("inventory") is Dictionary or not data.get("name") is String:
 			return {}
@@ -82,6 +82,8 @@ static func _read_valid(path: String, world: bool) -> Dictionary:
 			if not data.get("equipped") is String:
 				return {}
 		elif not data.get("equipped_weapon") is String or not data.get("equipped_relic") is String:
+			return {}
+		if version == CHARACTER_VERSION and not data.get("blueprints") is Array:
 			return {}
 	return data
 
@@ -139,8 +141,8 @@ static func _save(filename: String, data: Dictionary, world: bool) -> Error:
 	var previous: Dictionary = _read_valid(path, world)
 	if not previous.is_empty():
 		var backup_temporary: String = path + ".bak.tmp"
-		# Copy the valid original bytes, including a legacy v1 save, before the
-		# migrated v2 primary replaces it.
+		# Copy the valid original bytes, including a legacy v1/v2 save, before the
+		# migrated primary replaces it.
 		result = DirAccess.copy_absolute(path, backup_temporary)
 		if result != OK:
 			return result

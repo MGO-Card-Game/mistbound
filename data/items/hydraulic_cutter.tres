@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/item_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "hydraulic_cutter"
+display_name = "液压剪"
+description = "维修间制作的重型破拆工具：基础伤害 44，攻击间隔 0.72 秒，范围 100。挥得慢，但每一下都更重、够得更远。"
+color = Color(0.93, 0.62, 0.3, 1)
+slot = "weapon"
+weapon_kind = "melee"
+base_damage = 44.0
+attack_interval = 0.72
+attack_range = 100.0

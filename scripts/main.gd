@@ -5,6 +5,7 @@ const Simulation = preload("res://scripts/systems/world_simulation.gd")
 const Session = preload("res://scripts/systems/game_session.gd")
 const Interface = preload("res://scripts/ui/game_ui.gd")
 const Catalog = preload("res://scripts/systems/item_catalog.gd")
+const Recipes = preload("res://scripts/systems/recipe_catalog.gd")
 const Stage = preload("res://scripts/world/pixel_stage.gd")
 
 var simulation: Node2D
@@ -35,6 +36,7 @@ func _ready() -> void:
 	ui.join_requested.connect(_join)
 	ui.leave_requested.connect(func(): session.stop())
 	ui.equip_requested.connect(func(id: String): session.action("equip", id))
+	ui.craft_requested.connect(func(id: String): session.action("craft", id))
 	ui.save_requested.connect(func():
 		if session.save_now():
 			ui.notify("回收员档案已保存" if session.mode == "client" else "回收员档案和雾区记录已保存"))
@@ -90,6 +92,7 @@ func _process(delta: float) -> void:
 
 func _update_stage(local_id: int) -> void:
 	var zone: Node2D = simulation.zone
+	zone.set_harvested(simulation.players[local_id].harvested)
 	var labels: Array = zone.get_labels()
 	var lights: Array = zone.get_lights()
 	for id in simulation.players:
@@ -106,10 +109,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match event.physical_keycode:
 		KEY_I, KEY_ESCAPE:
-			ui.toggle_inventory()
+			if ui.is_crafting_open():
+				ui.close_crafting()
+			else:
+				ui.toggle_inventory()
 		KEY_E:
-			if not ui.blocks_gameplay_input():
-				session.action("interact")
+			if ui.is_crafting_open():
+				ui.close_crafting()
+			elif not ui.blocks_gameplay_input():
+				# The workbench is a local panel; only the craft itself goes to the host.
+				if simulation.station_for(session.local_id) == "workbench":
+					ui.open_crafting()
+				else:
+					session.action("interact")
 		KEY_SPACE:
 			if not ui.blocks_gameplay_input():
 				session.action("dash")
@@ -142,11 +154,30 @@ func _update_hud() -> void:
 			inventory.append({"id": item.id, "name": item.display_name, "description": item.description,
 				"count": count, "slot": item.slot,
 				"equipped": profile.equipped_weapon == item.id or profile.equipped_relic == item.id})
+	var haul: Array = []
+	for item in Catalog.all_items():
+		var carried := int(player.haul.get(item.id, 0))
+		if carried > 0:
+			haul.append({"name": item.display_name, "count": carried})
+	var recipes: Array = []
+	for recipe_id: String in Recipes.RECIPES:
+		var recipe: Dictionary = Recipes.RECIPES[recipe_id]
+		var output: Resource = Catalog.get_item(recipe_id)
+		var materials: Array = []
+		var affordable: bool = int(profile.coins) >= int(recipe.coins)
+		for material_id: String in recipe.materials:
+			var have := int(profile.inventory.get(material_id, 0))
+			materials.append({"name": Catalog.get_item(material_id).display_name, "need": recipe.materials[material_id], "have": have})
+			affordable = affordable and have >= int(recipe.materials[material_id])
+		recipes.append({"id": recipe_id, "name": output.display_name, "description": output.description,
+			"unlocked": profile.blueprints.has(recipe_id), "owned": int(profile.inventory.get(recipe_id, 0)) > 0,
+			"coins": recipe.coins, "materials": materials, "affordable": affordable,
+			"source": simulation.zone.ZONE_TITLES[recipe.zone]})
 	var objective: String
 	match simulation.current_zone:
-		"camp": objective = "Q 切换撬棍与射钉枪，I 查看装备和异常物。沿道路向北按 E 进入外环雾区。"
-		"wilds": objective = "穿过外环雾区：西北通往 7 号采样井，东北通往回声声学实验室。由房主开启闸门。"
-		_: objective = "避开守卫者的冲锋走廊和重击范围。回收异常物后在装备箱中装备，再执行一轮任务。"
+		"camp": objective = "Q 切换武器，I 查看装备和入库素材。带回的素材可在东侧维修间工作台制作装备。沿道路向北按 E 进入外环雾区。"
+		"wilds": objective = "穿过外环雾区：西北通往 7 号采样井，东北通往回声声学实验室。沿途可采集废料，由房主开启闸门。"
+		_: objective = "避开守卫者的冲锋走廊和重击范围。采集素材、回收异常物和蓝图，活着带回前哨。"
 	var weapon: Resource = Catalog.get_item(profile.equipped_weapon)
 	var relic: Resource = Catalog.get_item(profile.equipped_relic)
 	ui.update_hud({"zone_title": simulation.zone.get_title(), "mode": {"offline": "单人行动", "host": "房主", "client": "好友房间"}[session.mode],
@@ -155,7 +186,8 @@ func _update_hud() -> void:
 		"weapon_name": weapon.display_name, "weapon_kind": weapon.weapon_kind,
 		"relic_name": relic.display_name if relic != null else "未装备", "relic_charge": player.relic_charge,
 		"equipped_name": weapon.display_name, "objective": objective,
-		"interaction": simulation.interaction_for(id), "inventory": inventory, "boss_kills": simulation.world_data.get("boss_kills", 0)})
+		"interaction": simulation.interaction_for(id), "inventory": inventory, "haul": haul,
+		"recipes": recipes, "station": simulation.station_for(id), "boss_kills": simulation.world_data.get("boss_kills", 0)})
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:

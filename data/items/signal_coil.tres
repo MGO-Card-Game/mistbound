@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/item_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "signal_coil"
+display_name = "线圈"
+description = "回声声学实验室机柜里的感应线圈，断电后仍在微微震动。"
+color = Color(0.73, 0.63, 0.94, 1)
+slot = "material"

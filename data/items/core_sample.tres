@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/item_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "core_sample"
+display_name = "矿样"
+description = "7 号采样井留下的岩芯样本，质地异常致密。"
+color = Color(0.91, 0.71, 0.42, 1)
+slot = "material"

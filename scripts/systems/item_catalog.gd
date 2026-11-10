@@ -6,8 +6,14 @@ const ITEMS: Dictionary = {
 	"hunter_crossbow": preload("res://data/items/hunter_crossbow.tres"),
 	"ember_relic": preload("res://data/items/ember_relic.tres"),
 	"storm_relic": preload("res://data/items/storm_relic.tres"),
+	"hydraulic_cutter": preload("res://data/items/hydraulic_cutter.tres"),
+	"rapid_nailer": preload("res://data/items/rapid_nailer.tres"),
+	"scrap_metal": preload("res://data/items/scrap_metal.tres"),
+	"core_sample": preload("res://data/items/core_sample.tres"),
+	"signal_coil": preload("res://data/items/signal_coil.tres"),
 }
-const PROFILE_VERSION: int = 2
+const Recipes = preload("res://scripts/systems/recipe_catalog.gd")
+const PROFILE_VERSION: int = 3
 const MAX_CURRENCY: int = 999999999
 const MAX_ITEM_COUNT: int = 9999
 const MAX_NAME_LENGTH: int = 24
@@ -50,6 +56,13 @@ static func sanitize_profile(raw: Dictionary) -> Dictionary:
 			equipped_weapon = raw_weapon
 		if _owned_in_slot(raw_relic, inventory, "relic"):
 			equipped_relic = raw_relic
+	# Version-two profiles simply have no blueprints yet.
+	var blueprints: Array = []
+	var raw_blueprints: Variant = raw.get("blueprints", [])
+	if raw_blueprints is Array:
+		for recipe_id: String in Recipes.RECIPES:
+			if raw_blueprints.has(recipe_id):
+				blueprints.append(recipe_id)
 	var player_name: String = ""
 	var raw_name: Variant = raw.get("name", "回收员")
 	if raw_name is String:
@@ -70,6 +83,7 @@ static func sanitize_profile(raw: Dictionary) -> Dictionary:
 		"inventory": inventory,
 		"equipped_weapon": equipped_weapon,
 		"equipped_relic": equipped_relic,
+		"blueprints": blueprints,
 	}
 
 

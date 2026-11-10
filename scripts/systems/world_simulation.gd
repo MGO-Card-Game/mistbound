@@ -9,6 +9,7 @@ const Actor = preload("res://scripts/actors/actor_view.gd")
 const Loot = preload("res://scripts/actors/loot_view.gd")
 const Zone = preload("res://scripts/world/zone_view.gd")
 const Catalog = preload("res://scripts/systems/item_catalog.gd")
+const Recipes = preload("res://scripts/systems/recipe_catalog.gd")
 const Store = preload("res://scripts/systems/save_store.gd")
 const Combat = preload("res://scripts/systems/combat_rules.gd")
 const Brain = preload("res://scripts/systems/enemy_brain.gd")
@@ -71,7 +72,7 @@ func add_player(peer_id: int, profile: Dictionary) -> void:
 	players[peer_id] = {"actor": actor, "profile": clean, "hp": maximum, "max_hp": maximum,
 		"move": Vector2.ZERO, "aim": Vector2.RIGHT, "attack": false, "attack_cd": 0.0,
 		"dash_cd": 0.0, "dash_time": 0.0, "invulnerability": 0.0, "dash_direction": Vector2.RIGHT, "input_age": 0.0,
-		"relic_charge": 0}
+		"relic_charge": 0, "haul": {}, "harvested": []}
 	actor.weapon_kind = Catalog.get_item(clean.equipped_weapon).weapon_kind
 
 func remove_player(peer_id: int) -> void:
@@ -109,6 +110,7 @@ func enter_zone(zone_id: String) -> void:
 		player.invulnerability = 1.0
 		player.input_age = 1.0
 		player.relic_charge = 0
+		player.harvested = []
 		if zone_id == "camp":
 			player.hp = player.max_hp
 		index += 1
@@ -123,6 +125,9 @@ func enter_zone(zone_id: String) -> void:
 			"cooldown": 0.8, "windup": 0.0, "home": spawn.position}
 		Brain.initialize(enemies[_next_id])
 	notice.emit(0, "抵达%s · 区域记录已更新" % zone.get_title())
+	if zone_id == "camp":
+		for id in players:
+			_bank_haul(id)
 	checkpoint.emit()
 
 func set_input(peer_id: int, motion: Vector2, aim: Vector2, attack: bool) -> void:
@@ -149,6 +154,62 @@ func act(peer_id: int, action: String, argument: String = "") -> void:
 			_interact(peer_id)
 		"equip":
 			_equip(peer_id, argument)
+		"craft":
+			_craft(peer_id, argument)
+
+## Materials carried on this outing. They only count once banked at the outpost.
+func _carry(peer_id: int, materials: Dictionary) -> void:
+	var haul: Dictionary = players[peer_id].haul
+	for item_id: String in materials:
+		haul[item_id] = mini(Catalog.MAX_ITEM_COUNT, int(haul.get(item_id, 0)) + int(materials[item_id]))
+	if current_zone == "camp":
+		_bank_haul(peer_id)
+
+func _bank_haul(peer_id: int) -> void:
+	var player: Dictionary = players[peer_id]
+	if player.haul.is_empty():
+		return
+	var inventory: Dictionary = player.profile.inventory
+	for item_id: String in player.haul:
+		inventory[item_id] = mini(Catalog.MAX_ITEM_COUNT, int(inventory.get(item_id, 0)) + int(player.haul[item_id]))
+	notice.emit(peer_id, "素材已入库 · " + _material_text(player.haul))
+	player.haul = {}
+
+func _material_text(materials: Dictionary) -> String:
+	var parts: PackedStringArray = []
+	for item_id: String in materials:
+		parts.append("%s ×%d" % [Catalog.get_item(item_id).display_name, int(materials[item_id])])
+	return "  ".join(parts)
+
+func _craft(peer_id: int, recipe_id: String) -> void:
+	var recipe: Dictionary = Recipes.get_recipe(recipe_id)
+	if recipe.is_empty() or station_for(peer_id) != "workbench":
+		return
+	var profile: Dictionary = players[peer_id].profile
+	var inventory: Dictionary = profile.inventory
+	if not profile.blueprints.has(recipe_id):
+		notice.emit(peer_id, "尚未获得这张蓝图")
+		return
+	if int(inventory.get(recipe_id, 0)) > 0:
+		notice.emit(peer_id, "已经拥有这件装备")
+		return
+	if int(profile.coins) < int(recipe.coins):
+		notice.emit(peer_id, "报酬不足，无法制作")
+		return
+	for item_id: String in recipe.materials:
+		if int(inventory.get(item_id, 0)) < int(recipe.materials[item_id]):
+			notice.emit(peer_id, "入库素材不足，无法制作")
+			return
+	profile.coins = int(profile.coins) - int(recipe.coins)
+	for item_id: String in recipe.materials:
+		var remaining: int = int(inventory[item_id]) - int(recipe.materials[item_id])
+		if remaining > 0:
+			inventory[item_id] = remaining
+		else:
+			inventory.erase(item_id)
+	inventory[recipe_id] = 1
+	notice.emit(peer_id, "制作完成：%s（I 打开装备箱装备）" % Catalog.get_item(recipe_id).display_name)
+	checkpoint.emit()
 
 func _equip(peer_id: int, item_id: String) -> void:
 	var player: Dictionary = players[peer_id]
@@ -216,7 +277,9 @@ func _hurt_player(peer_id: int, damage: float) -> void:
 		player.dash_time = 0.0
 		player.invulnerability = 1.2
 		player.profile.coins = maxi(0, int(player.profile.coins) - 5)
-		notice.emit(peer_id, "在区域入口被救回 · 扣除 5 报酬，装备保留")
+		var lost: bool = not player.haul.is_empty()
+		player.haul = {}
+		notice.emit(peer_id, "在区域入口被救回 · 扣除 5 报酬，" + ("随身素材全部丢失" if lost else "装备保留"))
 		checkpoint.emit()
 
 func _defeat_enemy(enemy_id: int) -> void:
@@ -230,9 +293,14 @@ func _defeat_enemy(enemy_id: int) -> void:
 		player.max_hp = _max_hp(player.profile)
 		player.hp += player.max_hp - old_max
 		var item_id: String = ""
+		var blueprint: String = ""
 		if boss:
 			item_id = "ember_relic" if current_zone == "mine" else "storm_relic"
-		_spawn_loot(peer_id, enemy.actor.position + Vector2(index * 20, 18), 40 if boss else 6, item_id)
+			# Each guardian hands over its facility's blueprint until the player has it.
+			blueprint = Recipes.blueprint_for_zone(current_zone)
+			if player.profile.blueprints.has(blueprint):
+				blueprint = ""
+		_spawn_loot(peer_id, enemy.actor.position + Vector2(index * 20, 18), 40 if boss else 6, item_id, {"scrap_metal": 3 if boss else 1}, blueprint)
 		index += 1
 	if boss:
 		world_data.boss_kills = mini(Catalog.MAX_CURRENCY, int(world_data.get("boss_kills", 0)) + 1)
@@ -241,7 +309,7 @@ func _defeat_enemy(enemy_id: int) -> void:
 	enemies.erase(enemy_id)
 	checkpoint.emit()
 
-func _spawn_loot(owner: int, point: Vector2, coins: int, item_id: String) -> void:
+func _spawn_loot(owner: int, point: Vector2, coins: int, item_id: String, materials: Dictionary = {}, blueprint: String = "") -> void:
 	_next_id += 1
 	var view := Loot.new()
 	view.position = point
@@ -249,7 +317,8 @@ func _spawn_loot(owner: int, point: Vector2, coins: int, item_id: String) -> voi
 		view.tint = Catalog.get_item(item_id).color
 		view.anomaly = true
 	actors.add_child(view)
-	loot[_next_id] = {"actor": view, "owner": owner, "coins": coins, "item_id": item_id}
+	loot[_next_id] = {"actor": view, "owner": owner, "coins": coins, "item_id": item_id,
+		"materials": materials, "blueprint": blueprint}
 
 func _interact(peer_id: int) -> void:
 	var player: Dictionary = players[peer_id]
@@ -262,9 +331,31 @@ func _interact(peer_id: int) -> void:
 				var inventory: Dictionary = player.profile.inventory
 				inventory[drop.item_id] = mini(Catalog.MAX_ITEM_COUNT, int(inventory.get(drop.item_id, 0)) + 1)
 				label += " · " + Catalog.get_item(drop.item_id).display_name + "（I 打开装备箱装备）"
+			var blueprint: String = drop.blueprint
+			if blueprint != "" and not player.profile.blueprints.has(blueprint):
+				# Rebuild in catalog order so the live profile matches its saved form.
+				var unlocked: Array = []
+				for recipe_id: String in Recipes.RECIPES:
+					if recipe_id == blueprint or player.profile.blueprints.has(recipe_id):
+						unlocked.append(recipe_id)
+				player.profile.blueprints = unlocked
+				label += " · 蓝图：" + Catalog.get_item(blueprint).display_name
+			var materials: Dictionary = drop.materials
+			if not materials.is_empty():
+				label += " · 随身 " + _material_text(materials)
 			notice.emit(peer_id, label)
 			_destroy(drop.actor)
 			loot.erase(id)
+			# Banking in the outpost announces itself, so carry after the pickup notice.
+			_carry(peer_id, materials)
+			checkpoint.emit()
+			return
+	for node in zone.get_resource_nodes():
+		if player.actor.position.distance_to(node.position) <= float(node.radius) and not player.harvested.has(node.id):
+			player.harvested.append(node.id)
+			var gathered: Dictionary = {node.item_id: node.amount}
+			notice.emit(peer_id, "采集 %s · 带回前哨才算入库" % _material_text(gathered))
+			_carry(peer_id, gathered)
 			checkpoint.emit()
 			return
 	for portal in zone.get_portals():
@@ -282,9 +373,24 @@ func interaction_for(peer_id: int) -> String:
 	for id in loot:
 		if int(loot[id].owner) == peer_id and point.distance_to(loot[id].actor.position) <= 65.0:
 			return "回收你的物品"
+	for node in zone.get_resource_nodes():
+		if point.distance_to(node.position) <= float(node.radius) and not players[peer_id].harvested.has(node.id):
+			return "采集 " + Catalog.get_item(node.item_id).display_name
+	for station in zone.get_stations():
+		if point.distance_to(station.position) <= float(station.radius):
+			return "使用" + str(station.label)
 	for portal in zone.get_portals():
 		if point.distance_to(portal.position) <= float(portal.radius):
 			return "全队前往 " + str(portal.label) if peer_id == 1 else "请房主开启：" + str(portal.label)
+	return ""
+
+## ID of the outpost facility the player is standing at, or "".
+func station_for(peer_id: int) -> String:
+	if not players.has(peer_id):
+		return ""
+	for station in zone.get_stations():
+		if players[peer_id].actor.position.distance_to(station.position) <= float(station.radius):
+			return str(station.id)
 	return ""
 
 func get_profile(peer_id: int) -> Dictionary:
@@ -301,7 +407,8 @@ func snapshot() -> Dictionary:
 		var p: Dictionary = players[id]
 		state.players.append({"id": id, "position": p.actor.position, "facing": p.aim, "hp": p.hp, "max_hp": p.max_hp,
 			"profile": p.profile.duplicate(true), "name": p.actor.display_name, "slash": p.actor.slash_time,
-			"charge": p.relic_charge, "hurt": p.actor.hurt_time})
+			"charge": p.relic_charge, "hurt": p.actor.hurt_time,
+			"haul": p.haul.duplicate(), "harvested": p.harvested.duplicate()})
 	for id in enemies:
 		var e: Dictionary = enemies[id]
 		state.enemies.append({"id": id, "position": e.actor.position, "kind": e.kind, "hp": e.hp, "max_hp": e.max_hp,
@@ -341,6 +448,8 @@ func apply_snapshot(state: Dictionary, local_id: int) -> bool:
 		p.max_hp = data.max_hp
 		p.aim = data.facing
 		p.relic_charge = int(data.get("charge", 0))
+		p.haul = data.get("haul", {})
+		p.harvested = data.get("harvested", [])
 		var actor: CharacterBody2D = p.actor
 		actor.target_position = data.position
 		if changed_zone:

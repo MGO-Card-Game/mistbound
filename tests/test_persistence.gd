@@ -38,7 +38,7 @@ func _check(condition: bool, message: String) -> void:
 
 
 func _test_catalog_and_sanitization() -> void:
-	_check(Catalog.all_items().size() == 4, "Four item definitions load.")
+	_check(Catalog.all_items().size() == 9, "Nine item definitions load.")
 	_check(Catalog.get_item("missing") == null, "Unknown items are rejected.")
 	var blade: Resource = Catalog.get_item("traveler_blade")
 	var crossbow: Resource = Catalog.get_item("hunter_crossbow")
@@ -47,7 +47,8 @@ func _test_catalog_and_sanitization() -> void:
 	_check(Catalog.get_item("ember_relic").slot == "relic" and Catalog.get_item("ember_relic").effect_id == "burn" and Catalog.get_item("ember_relic").damage_bonus == 0.0, "Ember uses the burn effect without a flat damage bonus.")
 	_check(Catalog.get_item("storm_relic").slot == "relic" and Catalog.get_item("storm_relic").effect_id == "chain" and Catalog.get_item("storm_relic").damage_bonus == 0.0, "Storm uses the chain effect without a flat damage bonus.")
 	var defaults: Dictionary = Catalog.sanitize_profile({})
-	_check(defaults.version == 2 and defaults.equipped_weapon == "traveler_blade" and defaults.equipped_relic == "" and not defaults.has("equipped"), "Default profile uses independent version-two equipment slots.")
+	_check(defaults.version == 3 and defaults.equipped_weapon == "traveler_blade" and defaults.equipped_relic == "" and not defaults.has("equipped"), "Default profile uses independent equipment slots.")
+	_check(defaults.blueprints == [], "Default profile has no blueprints.")
 	_check(defaults.inventory == {"traveler_blade": 1, "hunter_crossbow": 1}, "Both starter weapons are immediately available.")
 	var clean: Dictionary = Catalog.sanitize_profile({
 		"version": 2,
@@ -59,8 +60,8 @@ func _test_catalog_and_sanitization() -> void:
 		"equipped_relic": "storm_relic",
 		"admin": true,
 	})
-	_check(clean.size() == 7 and not clean.has("admin") and not clean.has("equipped"), "Only version-two profile schema survives.")
-	_check(clean["version"] == 2 and clean["name"] == "探索者", "Version and name sanitized.")
+	_check(clean.size() == 8 and not clean.has("admin") and not clean.has("equipped"), "Only the current profile schema survives.")
+	_check(clean["version"] == 3 and clean["name"] == "探索者", "Version and name sanitized.")
 	_check(clean["coins"] == 0 and clean["xp"] == Catalog.MAX_CURRENCY, "Balances clamped.")
 	_check(clean["inventory"] == {"traveler_blade": 1, "hunter_crossbow": 1, "ember_relic": 2}, "Only known positive counts and starter weapons survive.")
 	_check(clean.equipped_weapon == "traveler_blade" and clean.equipped_relic == "", "Wrong-slot weapon and unowned relic are rejected.")
@@ -82,7 +83,7 @@ func _test_catalog_and_sanitization() -> void:
 func _test_profile_migration() -> void:
 	var legacy: Dictionary = {"version": 1, "name": "旧旅人", "coins": 91, "xp": 140, "inventory": {"traveler_blade": 2, "ember_relic": 3, "storm_relic": 1}, "equipped": "ember_relic"}
 	var migrated: Dictionary = Catalog.sanitize_profile(legacy)
-	_check(migrated.version == 2 and not migrated.has("equipped"), "Legacy profile migrates to version two.")
+	_check(migrated.version == 3 and not migrated.has("equipped") and migrated.blueprints == [], "Legacy profile migrates to the current version.")
 	_check(migrated.equipped_weapon == "traveler_blade" and migrated.equipped_relic == "ember_relic", "Legacy equipped relic moves to its own slot with a default sword.")
 	_check(migrated.name == legacy.name and migrated.coins == legacy.coins and migrated.xp == legacy.xp, "Migration preserves name, coins, and experience.")
 	_check(migrated.inventory == {"traveler_blade": 2, "hunter_crossbow": 1, "ember_relic": 3, "storm_relic": 1}, "Migration preserves inventory and adds the crossbow.")
@@ -99,6 +100,14 @@ func _test_profile_migration() -> void:
 	var versionless: Dictionary = Catalog.sanitize_profile({"inventory": {"ember_relic": 1}, "equipped": "ember_relic"})
 	_check(versionless.equipped_relic == "ember_relic", "Versionless legacy callers retain their equipped relic.")
 	_check(Catalog.sanitize_profile(migrated) == migrated, "Migration and sanitization are idempotent.")
+	var version_two: Dictionary = {"version": 2, "name": "二版", "coins": 12, "xp": 80, "inventory": {"ember_relic": 1}, "equipped_weapon": "hunter_crossbow", "equipped_relic": "ember_relic"}
+	var upgraded: Dictionary = Catalog.sanitize_profile(version_two)
+	_check(upgraded.version == 3 and upgraded.blueprints == [] and upgraded.equipped_weapon == "hunter_crossbow" and upgraded.equipped_relic == "ember_relic" and upgraded.coins == 12, "Version-two profile upgrades with its loadout and no blueprints.")
+	var crafted: Dictionary = Catalog.sanitize_profile({"inventory": {"scrap_metal": 12, "core_sample": 1.0e30, "hydraulic_cutter": 1}, "equipped_weapon": "hydraulic_cutter", "equipped_relic": "scrap_metal", "blueprints": ["rapid_nailer", "unknown", 7, "hydraulic_cutter", "rapid_nailer"]})
+	_check(crafted.blueprints == ["hydraulic_cutter", "rapid_nailer"], "Blueprints keep only known IDs, once each, in catalog order.")
+	_check(crafted.inventory.get("scrap_metal") == 12 and crafted.inventory.get("core_sample") == Catalog.MAX_ITEM_COUNT, "Banked materials persist with capped counts.")
+	_check(crafted.equipped_weapon == "hydraulic_cutter" and crafted.equipped_relic == "", "Crafted weapon equips; a material cannot occupy a slot.")
+	_check(Catalog.sanitize_profile({"blueprints": "hydraulic_cutter"}).blueprints == [], "Malformed blueprint field uses the default.")
 
 
 func _test_roundtrip_and_recovery(directory: String) -> void:
@@ -133,6 +142,20 @@ func _test_roundtrip_and_recovery(directory: String) -> void:
 	_check(Saves.load_world() == world, "Character fallback does not reset world.")
 	_check(Saves.save_character({"coins": -1, "xp": "bad", "inventory": {"unknown": 200}, "equipped_weapon": "unknown", "equipped_relic": []}) == OK, "Malformed profile can be safely saved.")
 	_check(Saves.load_character() == Catalog.sanitize_profile({}), "Save always sanitizes profile.")
+	var location: String = directory.path_join("version-two")
+	_select_directory(location)
+	var version_two: Dictionary = {"version": 2, "name": "二版", "coins": 12, "xp": 80, "inventory": {"traveler_blade": 1, "hunter_crossbow": 1, "ember_relic": 1}, "equipped_weapon": "hunter_crossbow", "equipped_relic": "ember_relic"}
+	var version_two_text: String = JSON.stringify(version_two)
+	_write_text(location.path_join("character.json"), version_two_text)
+	var unlocked: Dictionary = Saves.load_character()
+	_check(unlocked == Catalog.sanitize_profile(version_two), "Version-two file loads into the current schema.")
+	unlocked.blueprints = ["rapid_nailer"]
+	unlocked.inventory["signal_coil"] = 4
+	_check(Saves.save_character(unlocked) == OK and Saves.load_character() == unlocked, "Blueprints and banked materials roundtrip in the character file.")
+	_check(FileAccess.get_file_as_string(location.path_join("character.json.bak")) == version_two_text, "Upgrade keeps the exact version-two bytes as backup.")
+	_write_text(location.path_join("character.json"), JSON.stringify({"version": 3, "name": "缺字段", "coins": 0, "xp": 0, "inventory": {}, "equipped_weapon": "traveler_blade", "equipped_relic": ""}))
+	_check(Saves.load_character() == Catalog.sanitize_profile(version_two), "Current-version file without blueprints falls back to the backup.")
+	_select_directory(directory)
 
 
 func _test_legacy_files(directory: String) -> void:
@@ -149,7 +172,7 @@ func _test_legacy_files(directory: String) -> void:
 		_check(FileAccess.get_file_as_string(primary) == original_text and not FileAccess.file_exists(backup), "Reading legacy primary does not modify files: " + equipped)
 		_check(Saves.save_character(Saves.load_character()) == OK, "Migrated profile saves successfully: " + equipped)
 		var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(primary))
-		_check(saved.version == 2 and not saved.has("equipped"), "Primary is written in version-two format: " + equipped)
+		_check(saved.version == 3 and not saved.has("equipped") and saved.blueprints == [], "Primary is written in the current format: " + equipped)
 		_check(FileAccess.get_file_as_string(backup) == original_text, "Migration preserves exact legacy primary bytes in backup: " + equipped)
 		_write_text(primary, "{ damaged migrated primary")
 		_check(Saves.load_character() == expected, "Legacy backup also migrates during recovery: " + equipped)
@@ -161,7 +184,7 @@ func _test_legacy_files(directory: String) -> void:
 func _test_future_version_protection(directory: String) -> void:
 	var location: String = directory.path_join("future-primary")
 	_select_directory(location)
-	var future: Dictionary = {"version": 3, "future_payload": {"keep": "untouched"}}
+	var future: Dictionary = {"version": 4, "future_payload": {"keep": "untouched"}}
 	var future_text: String = JSON.stringify(future, "  ")
 	var legacy: Dictionary = {"version": 1, "name": "备份旅人", "coins": 99, "xp": 12, "inventory": {"traveler_blade": 1, "ember_relic": 1}, "equipped": "ember_relic"}
 	var legacy_text: String = JSON.stringify(legacy, "  ")

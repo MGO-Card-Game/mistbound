@@ -31,6 +31,11 @@ func _run() -> void:
 		print("PREVIEW_CAPTURE_DONE failures=%d" % _failures)
 		quit(0 if _failures == 0 else 1)
 		return
+	if OS.get_cmdline_user_args().has("--crafting"):
+		await _capture_crafting(main)
+		print("PREVIEW_CAPTURE_DONE failures=%d" % _failures)
+		quit(0 if _failures == 0 else 1)
+		return
 	await _capture("01-menu.png")
 	main.session.start_solo()
 	await _settle()
@@ -150,6 +155,44 @@ func _capture_phase1(main: Node2D) -> void:
 		main.simulation.effects.play_event({"type": "slam", "position": boss.position, "radius": 115})
 		main.simulation.effects.play_event({"type": "hit", "position": boss.position + Vector2(150, 0), "damage": 0, "element": "physical"})
 		await _capture("phase1-11-slam-action.png")
+	main.session.stop()
+
+
+func _capture_crafting(main: Node2D) -> void:
+	main.session.start_solo()
+	main.session.set_physics_process(false)
+	var player: Dictionary = main.simulation.players[1]
+	for zone_id: String in ["wilds", "mine", "crypt"]:
+		main.simulation.enter_zone(zone_id)
+		var nodes: Array = main.simulation.zone.get_resource_nodes()
+		# Stand between an emptied point and a full one so both states are in frame.
+		player.actor.position = nodes[0].position
+		main.simulation.act(1, "interact")
+		player.actor.position = nodes[0].position + Vector2(70, 40)
+		player.actor.target_position = player.actor.position
+		await _settle()
+		await _capture("crafting-01-gather-%s.png" % zone_id)
+	player.haul = {"scrap_metal": 12, "core_sample": 6, "signal_coil": 2}
+	player.profile.blueprints = ["hydraulic_cutter"]
+	player.profile.coins = 55
+	main.simulation.enter_zone("camp")
+	player.actor.position = main.simulation.zone.get_stations()[0].position + Vector2(-30, 20)
+	player.actor.target_position = player.actor.position
+	await _settle()
+	await _capture("crafting-02-workbench.png")
+	main.ui.open_crafting()
+	await _settle()
+	await _capture("crafting-03-recipes.png")
+	main.simulation.act(1, "craft", "hydraulic_cutter")
+	await _settle()
+	await _capture("crafting-04-crafted.png")
+	main.ui.close_crafting()
+	main.ui.toggle_inventory()
+	await _settle()
+	var inventory_scroll: ScrollContainer = main.ui._inventory_list.get_parent()
+	inventory_scroll.scroll_vertical = 2000
+	await _settle()
+	await _capture("crafting-05-stock.png")
 	main.session.stop()
 
 

@@ -6,7 +6,7 @@ class_name ItemDefinition
 @export var display_name: String = ""
 @export_multiline var description: String = ""
 @export var color: Color = Color.WHITE
-@export_enum("weapon", "relic") var slot: String = "weapon"
+@export_enum("weapon", "relic", "material") var slot: String = "weapon"
 @export_enum("melee", "projectile") var weapon_kind: String = "melee"
 @export var base_damage: float = 0.0
 @export var attack_interval: float = 0.38

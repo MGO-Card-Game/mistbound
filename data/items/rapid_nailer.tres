@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/item_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "rapid_nailer"
+display_name = "连发射钉枪"
+description = "维修间改装的连发射钉枪：基础伤害 9，攻击间隔 0.24 秒，射程 460，弹速 820。单发很轻，但命中次数多。"
+color = Color(0.55, 0.8, 0.9, 1)
+slot = "weapon"
+weapon_kind = "projectile"
+base_damage = 9.0
+attack_interval = 0.24
+attack_range = 460.0
+projectile_speed = 820.0

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ItemDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/item_definition.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "scrap_metal"
+display_name = "废金属"
+description = "从雾区造物和废料堆里拆下的金属件。几乎所有蓝图都用得上。"
+color = Color(0.66, 0.72, 0.74, 1)
+slot = "material"

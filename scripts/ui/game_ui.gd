@@ -7,6 +7,7 @@ signal host_requested(port: int)
 signal join_requested(address: String, port: int)
 signal leave_requested()
 signal equip_requested(item_id: String)
+signal craft_requested(recipe_id: String)
 signal save_requested()
 
 const Art = preload("res://scripts/art/pixel_art.gd")
@@ -27,6 +28,8 @@ var _menu: Control
 var _hud: Control
 var _inventory_panel: PanelContainer
 var _inventory_list: VBoxContainer
+var _crafting_panel: PanelContainer
+var _crafting_list: VBoxContainer
 var _status: Label
 var _address: LineEdit
 var _port: SpinBox
@@ -38,11 +41,14 @@ var _stats: Label
 var _equipment: Label
 var _relic: Label
 var _objective: Label
+var _haul: Label
 var _interaction: Label
 var _toast: Label
 var _toast_time := 0.0
 var _inventory_signature := ""
 var _inventory: Array = []
+var _recipes_signature := ""
+var _recipes: Array = []
 
 
 func _ready() -> void:
@@ -57,6 +63,7 @@ func _ready() -> void:
 	_build_menu()
 	_build_hud()
 	_build_inventory()
+	_build_crafting()
 	show_menu()
 
 
@@ -71,6 +78,7 @@ func show_menu(message: String = "") -> void:
 	_menu.show()
 	_hud.hide()
 	_inventory_panel.hide()
+	_crafting_panel.hide()
 	_toast.hide()
 	set_status(message)
 
@@ -79,6 +87,7 @@ func show_game() -> void:
 	_menu.hide()
 	_hud.show()
 	_inventory_panel.hide()
+	_crafting_panel.hide()
 	_toast.offset_right = -22
 	_root.get_viewport().gui_release_focus()
 
@@ -92,16 +101,35 @@ func is_menu_open() -> bool:
 
 
 func blocks_gameplay_input() -> bool:
-	return _menu.visible or _inventory_panel.visible
+	return _menu.visible or _inventory_panel.visible or _crafting_panel.visible
 
 
 func toggle_inventory() -> void:
 	if is_menu_open():
 		return
+	_crafting_panel.hide()
 	_inventory_panel.visible = not _inventory_panel.visible
 	_toast.offset_right = -450 if _inventory_panel.visible else -22
 	if not _inventory_panel.visible:
 		_root.get_viewport().gui_release_focus()
+
+
+func is_crafting_open() -> bool:
+	return _crafting_panel.visible
+
+
+func open_crafting() -> void:
+	if is_menu_open():
+		return
+	_inventory_panel.hide()
+	_crafting_panel.show()
+	_toast.offset_right = -450
+
+
+func close_crafting() -> void:
+	_crafting_panel.hide()
+	_toast.offset_right = -450 if _inventory_panel.visible else -22
+	_root.get_viewport().gui_release_focus()
 
 
 func notify(message: String) -> void:
@@ -137,6 +165,20 @@ func update_hud(state: Dictionary) -> void:
 		_inventory_signature = signature
 		_inventory = items.duplicate(true)
 		_refresh_inventory()
+	var carried: PackedStringArray = []
+	for entry: Dictionary in state.get("haul", []):
+		carried.append("%s ×%d" % [str(entry.name), int(entry.count)])
+	_haul.text = "随身素材 · 倒下即丢失\n" + "  ".join(carried)
+	_haul.visible = not carried.is_empty()
+	var recipes: Array = state.get("recipes", [])
+	var recipes_signature := JSON.stringify(recipes)
+	if recipes_signature != _recipes_signature:
+		_recipes_signature = recipes_signature
+		_recipes = recipes.duplicate(true)
+		_refresh_crafting()
+	# The party can be pulled away from the workbench while the panel is open.
+	if _crafting_panel.visible and str(state.get("station", "")) != "workbench":
+		close_crafting()
 
 
 func _make_theme() -> Theme:
@@ -363,6 +405,9 @@ func _build_hud() -> void:
 	objective_box.add_child(_label("任务简报", 13, GOLD))
 	_objective = _wrapped_label("穿过雾区，找到废弃设施的入口。", 14, PAPER, 285)
 	objective_box.add_child(_objective)
+	_haul = _wrapped_label("", 13, TEAL, 285)
+	_haul.hide()
+	objective_box.add_child(_haul)
 	var bottom := PanelContainer.new()
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 20
@@ -453,6 +498,85 @@ func _refresh_inventory() -> void:
 			_add_inventory_card(item, slot)
 		if count_in_slot == 0:
 			_inventory_list.add_child(_wrapped_label("进入废弃设施，回收你的第一件异常物。" if slot == "relic" else "尚未获得武器。", 14, MUTED, 300))
+	_inventory_list.add_child(_label("素材 / 已入库", 13, MUTED))
+	var stock: PackedStringArray = []
+	for entry in _inventory:
+		if entry is Dictionary and str(entry.get("slot", "")) == "material":
+			stock.append("%s ×%d" % [str(entry.get("name", "")), int(entry.get("count", 0))])
+	if stock.is_empty():
+		_inventory_list.add_child(_wrapped_label("尚无入库素材。在雾区采集，活着带回前哨。", 14, MUTED, 300))
+	else:
+		_inventory_list.add_child(_wrapped_label("  ".join(stock), 15, PAPER, 300))
+
+
+func _build_crafting() -> void:
+	_crafting_panel = PanelContainer.new()
+	_crafting_panel.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
+	_crafting_panel.offset_left = -430
+	_crafting_panel.offset_right = -20
+	_crafting_panel.offset_top = 104
+	_crafting_panel.offset_bottom = -66
+	_crafting_panel.add_theme_stylebox_override("panel", _box(Color(PANEL, 0.97), LINE, 20, 18))
+	_root.add_child(_crafting_panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	_crafting_panel.add_child(box)
+	var heading := HBoxContainer.new()
+	box.add_child(heading)
+	var title := _label("维修间工作台", 23, PAPER)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading.add_child(title)
+	var close := _button("关闭  E / Esc", 34)
+	close.pressed.connect(close_crafting)
+	heading.add_child(close)
+	box.add_child(_wrapped_label("按蓝图用入库素材和报酬制作装备。蓝图由各设施的守卫者掉落。", 14, MUTED, 360))
+	box.add_child(HSeparator.new())
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(scroll)
+	_crafting_list = VBoxContainer.new()
+	_crafting_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_crafting_list.add_theme_constant_override("separation", 10)
+	scroll.add_child(_crafting_list)
+	box.add_child(_wrapped_label("随身素材要先带回前哨入库，才能用于制作。", 12, MUTED, 360))
+	_crafting_panel.hide()
+
+
+func _refresh_crafting() -> void:
+	for child in _crafting_list.get_children():
+		_crafting_list.remove_child(child)
+		child.queue_free()
+	for entry in _recipes:
+		if not entry is Dictionary:
+			continue
+		var recipe: Dictionary = entry
+		var unlocked := bool(recipe.get("unlocked", false))
+		var owned := bool(recipe.get("owned", false))
+		var card := PanelContainer.new()
+		card.add_theme_stylebox_override("panel", _box(PANEL_LIGHT, TEAL if owned else LINE, 14, 12))
+		_crafting_list.add_child(card)
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", 7)
+		card.add_child(box)
+		box.add_child(_wrapped_label(str(recipe.get("name", "")), 17, GOLD if unlocked else MUTED, 300))
+		if not unlocked:
+			box.add_child(_wrapped_label("未获得蓝图 · 排除「%s」的守卫者后回收。" % str(recipe.get("source", "")), 13, MUTED, 300))
+			continue
+		box.add_child(_wrapped_label(str(recipe.get("description", "")), 13, MUTED, 300))
+		var costs: PackedStringArray = []
+		for cost: Dictionary in recipe.get("materials", []):
+			costs.append("%s %d/%d" % [str(cost.name), int(cost.have), int(cost.need)])
+		costs.append("报酬 %d" % int(recipe.get("coins", 0)))
+		box.add_child(_wrapped_label("  ".join(costs), 14, PAPER, 300))
+		var craft := _button("已拥有" if owned else ("制作" if bool(recipe.get("affordable", false)) else "素材或报酬不足"), 34)
+		craft.disabled = owned or not bool(recipe.get("affordable", false))
+		craft.pressed.connect(_emit_craft.bind(str(recipe.get("id", ""))))
+		box.add_child(craft)
+
+
+func _emit_craft(recipe_id: String) -> void:
+	craft_requested.emit(recipe_id)
 
 
 func _add_inventory_card(item: Dictionary, slot: String) -> void:

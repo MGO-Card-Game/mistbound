@@ -8,7 +8,7 @@ signal message(text: String)
 
 const Store = preload("res://scripts/systems/save_store.gd")
 const Catalog = preload("res://scripts/systems/item_catalog.gd")
-const PROTOCOL_VERSION := 2
+const PROTOCOL_VERSION := 3
 const DEFAULT_PORT := 24570
 const MAX_PLAYERS := 4
 
@@ -192,7 +192,7 @@ func _request_action(input_epoch: int, action_name: String, argument: String) ->
 	if mode != "host" or not active or input_epoch != simulation.epoch:
 		return
 	var sender := multiplayer.get_remote_sender_id()
-	if not simulation.players.has(sender) or action_name not in ["dash", "interact", "equip"] or argument.length() > 64:
+	if not simulation.players.has(sender) or action_name not in ["dash", "interact", "equip", "craft"] or argument.length() > 64:
 		return
 	var now := Time.get_ticks_msec()
 	var action_times: Dictionary = _action_times.get(sender, {})

@@ -6,6 +6,7 @@ extends Node2D
 
 const Art = preload("res://scripts/art/pixel_art.gd")
 const ZoneArt = preload("res://scripts/world/zone_art.gd")
+const Catalog = preload("res://scripts/systems/item_catalog.gd")
 
 const WALK_RECT := Rect2(-880.0, -500.0, 1760.0, 1000.0)
 const ZONE_TITLES := {
@@ -27,6 +28,9 @@ var zone_id: String = "camp"
 var _portals: Array[Dictionary] = []
 var _enemy_spawns: Array[Dictionary] = []
 var _blockers: Array[Rect2] = []
+var _resource_nodes: Array[Dictionary] = []
+var _stations: Array[Dictionary] = []
+var _harvested: Array = []
 var _spawn: Vector2 = Vector2(0.0, 180.0)
 var _clock: float = 0.0
 
@@ -44,12 +48,16 @@ func build(next_zone: String) -> void:
 	_portals.clear()
 	_enemy_spawns.clear()
 	_blockers.clear()
+	_resource_nodes.clear()
+	_stations.clear()
+	_harvested = []
 	_clock = 0.0
 	_spawn = Vector2(0.0, 280.0)
 	match zone_id:
 		"camp":
 			_spawn = Vector2(0.0, 170.0)
 			_add_portal("camp_to_wilds", "外环雾区", "wilds", Vector2(0.0, -340.0))
+			_stations.append({"id": "workbench", "label": "维修间工作台", "position": Vector2(465.0, 225.0), "radius": 80.0})
 			_blockers.assign([
 				Rect2(-570.0, -10.0, 210.0, 150.0),
 				Rect2(360.0, -10.0, 210.0, 150.0),
@@ -70,6 +78,8 @@ func build(next_zone: String) -> void:
 			_add_enemy(Vector2(420.0, -170.0), "slime")
 			_add_enemy(Vector2(-160.0, -165.0), "guard")
 			_add_enemy(Vector2(190.0, -170.0), "guard")
+			_add_resource("scrap_metal", Vector2(-690.0, 110.0))
+			_add_resource("scrap_metal", Vector2(690.0, 110.0))
 		"mine":
 			_add_portal("mine_to_wilds", "返回外环雾区", "wilds", Vector2(0.0, 405.0))
 			_blockers.assign([
@@ -82,6 +92,10 @@ func build(next_zone: String) -> void:
 			_add_enemy(Vector2(-330.0, -110.0), "guard")
 			_add_enemy(Vector2(330.0, -110.0), "guard")
 			_add_enemy(Vector2(0.0, -255.0), "boss")
+			_add_resource("core_sample", Vector2(-640.0, 235.0))
+			_add_resource("core_sample", Vector2(625.0, 210.0))
+			_add_resource("core_sample", Vector2(-690.0, -90.0))
+			_add_resource("core_sample", Vector2(675.0, -150.0))
 		"crypt":
 			_add_portal("crypt_to_wilds", "返回外环雾区", "wilds", Vector2(0.0, 405.0))
 			_blockers.assign([
@@ -95,6 +109,10 @@ func build(next_zone: String) -> void:
 			_add_enemy(Vector2(-250.0, -140.0), "slime")
 			_add_enemy(Vector2(250.0, -140.0), "slime")
 			_add_enemy(Vector2(0.0, -270.0), "boss")
+			_add_resource("signal_coil", Vector2(-345.0, 75.0))
+			_add_resource("signal_coil", Vector2(345.0, 75.0))
+			_add_resource("signal_coil", Vector2(-345.0, -240.0))
+			_add_resource("signal_coil", Vector2(345.0, -240.0))
 	# Walls sit outside WALK_RECT; its interior remains identical on all peers.
 	_add_collision(Rect2(-944.0, -564.0, 64.0, 1128.0))
 	_add_collision(Rect2(880.0, -564.0, 64.0, 1128.0))
@@ -120,6 +138,22 @@ func get_portals() -> Array:
 
 func get_blockers() -> Array:
 	return _blockers.duplicate()
+
+
+## Gathering points: {id, item_id, amount, position, radius}. Each player may
+## harvest each one once per visit; the simulation tracks who has.
+func get_resource_nodes() -> Array:
+	return _resource_nodes.duplicate(true)
+
+
+## Outpost facilities: {id, label, position, radius}.
+func get_stations() -> Array:
+	return _stations.duplicate(true)
+
+
+## Presentation only: which gathering points the local player has emptied.
+func set_harvested(ids: Array) -> void:
+	_harvested = ids
 
 
 func get_walk_rect() -> Rect2:
@@ -183,6 +217,11 @@ func get_lights() -> Array:
 		lights.append({"position": point, "radius": radius})
 	for portal in _portals:
 		lights.append({"position": portal.position, "radius": 95.0})
+	for node in _resource_nodes:
+		if not _harvested.has(node.id):
+			lights.append({"position": node.position, "radius": 70.0})
+	for station in _stations:
+		lights.append({"position": station.position, "radius": 110.0})
 	return lights
 
 
@@ -196,6 +235,10 @@ func _add_portal(id: String, label: String, target: String, point: Vector2) -> v
 
 func _add_enemy(point: Vector2, kind: String) -> void:
 	_enemy_spawns.append({"position": point, "kind": kind})
+
+
+func _add_resource(item_id: String, point: Vector2) -> void:
+	_resource_nodes.append({"id": _resource_nodes.size(), "item_id": item_id, "amount": 2, "position": point, "radius": 60.0})
 
 
 func _add_collision(rect: Rect2) -> void:
@@ -229,6 +272,10 @@ func _draw() -> void:
 		"crypt": _animate_crypt()
 	for portal in _portals:
 		_draw_portal(portal)
+	for node in _resource_nodes:
+		_draw_resource(node)
+	for station in _stations:
+		_draw_station(station)
 
 
 ## Paints art pixels at integer offsets from a snapped world anchor.
@@ -308,6 +355,47 @@ func _animate_crypt() -> void:
 		_glow(point, 74.0, Art.FOG_PALE, 0.7)
 	var chamber := fmod(_clock * 0.35, 1.0)
 	draw_arc(Vector2(0, -270), 30.0 + chamber * 120.0, 0.0, TAU, 40, Color(Art.ANOMALY_LIGHT, 0.3 * (1.0 - chamber)), 3.0, false)
+
+
+func _block(from: Vector2i, to: Vector2i) -> Array:
+	var cells: Array = []
+	for y in range(from.y, to.y + 1):
+		for x in range(from.x, to.x + 1):
+			cells.append(Vector2i(x, y))
+	return cells
+
+
+## A sample case: lit in the material's colour until the local player empties it.
+func _draw_resource(node: Dictionary) -> void:
+	var at: Vector2 = node.position
+	var color: Color = Catalog.get_item(node.item_id).color
+	var spent := _harvested.has(node.id)
+	_pixels(at, _block(Vector2i(-4, 1), Vector2i(4, 1)), Color(0, 0, 0, 0.35))
+	_pixels(at, _block(Vector2i(-4, -5), Vector2i(4, 0)), Art.INK)
+	_pixels(at, _block(Vector2i(-3, -4), Vector2i(3, -1)), color.darkened(0.75) if spent else color.darkened(0.45))
+	if spent:
+		return
+	var pulse := 0.5 + 0.5 * sin(_clock * 2.6 + float(node.id))
+	_glow(at + Vector2(0, -6), 44.0, color, 0.7 + pulse * 0.6)
+	_pixels(at, _block(Vector2i(-2, -3), Vector2i(2, -2)), color.lightened(pulse * 0.3))
+	_pixels(at, [Vector2i(-3, -4), Vector2i(3, -4)], color.lightened(0.4))
+	# A falling chevron marks it as something to pick up.
+	var drop := int(fmod(_clock * 1.4 + float(node.id) * 0.3, 1.0) * 3.0)
+	_pixels(at, [Vector2i(-2, -12 + drop), Vector2i(-1, -11 + drop), Vector2i(0, -10 + drop), Vector2i(1, -11 + drop), Vector2i(2, -12 + drop)], Color(color.lightened(0.3), 0.9))
+
+
+func _draw_station(station: Dictionary) -> void:
+	var at: Vector2 = station.position
+	_glow(at + Vector2(0, -9), 62.0, Art.LAMP_WARM, 0.8 + sin(_clock * 2.2) * 0.15)
+	_pixels(at, _block(Vector2i(-9, 1), Vector2i(9, 1)), Color(0, 0, 0, 0.35))
+	# Legs, tabletop, then a vice and a work lamp on top.
+	_pixels(at, _block(Vector2i(-8, -4), Vector2i(-7, 0)) + _block(Vector2i(7, -4), Vector2i(8, 0)), Art.INK)
+	_pixels(at, _block(Vector2i(-9, -6), Vector2i(9, -5)), Art.INK)
+	_pixels(at, _block(Vector2i(-8, -6), Vector2i(8, -6)), Art.RUST)
+	_pixels(at, _block(Vector2i(-6, -8), Vector2i(-3, -7)), Art.FOG_PALE)
+	_pixels(at, _block(Vector2i(5, -11), Vector2i(5, -7)), Art.INK)
+	_pixels(at, [Vector2i(4, -11), Vector2i(3, -11)], Art.LAMP if _blink(0.4) else Art.LAMP_WARM)
+	_pixels(at, [Vector2i(0, -7)], Art.WARN_LIGHT if _blink(1.3) else Art.WARN_DARK)
 
 
 func _draw_portal(portal: Dictionary) -> void:
