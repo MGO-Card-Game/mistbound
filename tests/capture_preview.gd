@@ -36,6 +36,11 @@ func _run() -> void:
 		print("PREVIEW_CAPTURE_DONE failures=%d" % _failures)
 		quit(0 if _failures == 0 else 1)
 		return
+	if OS.get_cmdline_user_args().has("--hud"):
+		await _capture_hud(main)
+		print("PREVIEW_CAPTURE_DONE failures=%d" % _failures)
+		quit(0 if _failures == 0 else 1)
+		return
 	await _capture("01-menu.png")
 	main.session.start_solo()
 	await _settle()
@@ -193,6 +198,57 @@ func _capture_crafting(main: Node2D) -> void:
 	inventory_scroll.scroll_vertical = 2000
 	await _settle()
 	await _capture("crafting-05-stock.png")
+	main.session.stop()
+
+
+## HUD states that ordinary play reaches only mid-fight: messages, carried materials,
+## low health, a relic charge, the dodge cooldown, the guardian's bar and the menu.
+func _capture_hud(main: Node2D) -> void:
+	main.session.start_solo()
+	main.session.set_physics_process(false)
+	var player: Dictionary = main.simulation.players[1]
+	await _settle()
+	await _capture("hud-01-arrival.png")
+	main.simulation.enter_zone("mine")
+	player.profile.inventory["storm_relic"] = 1
+	player.profile.xp = 95
+	player.profile.coins = 128
+	main.simulation.act(1, "equip", "storm_relic")
+	player.haul = {"scrap_metal": 7, "core_sample": 4}
+	player.relic_charge = 2
+	player.actor.relic_charge = 2
+	player.actor.position = Vector2(-160, 40)
+	player.actor.target_position = player.actor.position
+	for enemy: Dictionary in main.simulation.enemies.values():
+		if enemy.kind == "boss":
+			enemy.actor.position = Vector2(60, -40)
+			enemy.hp = enemy.max_hp * 0.62
+			enemy.actor.hp = enemy.hp
+			enemy.actor.boss_state = "recovery"
+		else:
+			enemy.actor.hide()
+	main.ui.notify("采集 矿样 ×2 · 带回前哨才算入库")
+	main.ui.notify("在区域入口被救回 · 扣除 5 报酬，随身素材全部丢失")
+	await _settle()
+	player.hp = player.max_hp * 0.24
+	player.dash_cd = 0.5
+	await _settle(8)
+	await _capture("hud-02-fight.png")
+	main.ui.handle_escape()
+	await _settle()
+	await _capture("hud-03-menu.png")
+	main.ui._ask_leave(true)
+	await _settle()
+	await _capture("hud-04-leave-confirm.png")
+	main.ui.handle_escape()
+	main.ui.handle_escape()
+	player.hp = player.max_hp
+	root.size = Vector2i(1280, 720)
+	main.ui.toggle_inventory()
+	await _settle()
+	await _capture("hud-05-inventory-720.png")
+	main.ui.toggle_inventory()
+	root.size = Vector2i(1280, 800)
 	main.session.stop()
 
 

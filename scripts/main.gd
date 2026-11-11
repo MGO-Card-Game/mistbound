@@ -16,6 +16,10 @@ var _input_timer: float = 0.0
 var _hud_timer: float = 0.0
 var _snap_view := true
 var _view_epoch := -1
+var _dash_estimate := 0.0
+
+const DASH_COOLDOWN := 0.85
+const BOSS_BAR_RANGE := 520.0
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
@@ -66,6 +70,7 @@ func _process(delta: float) -> void:
 		return
 	_input_timer += delta
 	_hud_timer += delta
+	_dash_estimate = maxf(0.0, _dash_estimate - delta)
 	var id: int = session.local_id
 	if simulation.players.has(id):
 		var actor: Node2D = simulation.players[id].actor
@@ -98,8 +103,12 @@ func _update_stage(local_id: int) -> void:
 	for id in simulation.players:
 		if id != local_id:
 			lights.append({"position": simulation.players[id].actor.position, "radius": 170.0})
+	var alone: bool = simulation.players.size() == 1
 	for child in simulation.actors.get_children():
 		if child.visible and child.has_method("get_overlay_labels"):
+			# A name tag only helps tell teammates apart.
+			if alone and child.kind == "player":
+				continue
 			labels.append_array(child.get_overlay_labels())
 	stage.set_labels(labels)
 	stage.update_fog(simulation.current_zone, simulation.players[local_id].actor.position, lights)
@@ -108,7 +117,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not session.active or not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	match event.physical_keycode:
-		KEY_I, KEY_ESCAPE:
+		KEY_ESCAPE:
+			ui.handle_escape()
+		KEY_I:
 			if ui.is_crafting_open():
 				ui.close_crafting()
 			else:
@@ -125,6 +136,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_SPACE:
 			if not ui.blocks_gameplay_input():
 				session.action("dash")
+				# Guests never receive the host's cooldown, so mirror its rule for the HUD.
+				if _dash_estimate <= 0.0:
+					_dash_estimate = DASH_COOLDOWN
 		KEY_Q:
 			if not ui.blocks_gameplay_input():
 				_switch_weapon()
@@ -158,7 +172,7 @@ func _update_hud() -> void:
 	for item in Catalog.all_items():
 		var carried := int(player.haul.get(item.id, 0))
 		if carried > 0:
-			haul.append({"name": item.display_name, "count": carried})
+			haul.append({"id": item.id, "name": item.display_name, "count": carried})
 	var recipes: Array = []
 	for recipe_id: String in Recipes.RECIPES:
 		var recipe: Dictionary = Recipes.RECIPES[recipe_id]
@@ -167,7 +181,7 @@ func _update_hud() -> void:
 		var affordable: bool = int(profile.coins) >= int(recipe.coins)
 		for material_id: String in recipe.materials:
 			var have := int(profile.inventory.get(material_id, 0))
-			materials.append({"name": Catalog.get_item(material_id).display_name, "need": recipe.materials[material_id], "have": have})
+			materials.append({"id": material_id, "name": Catalog.get_item(material_id).display_name, "need": recipe.materials[material_id], "have": have})
 			affordable = affordable and have >= int(recipe.materials[material_id])
 		recipes.append({"id": recipe_id, "name": output.display_name, "description": output.description,
 			"unlocked": profile.blueprints.has(recipe_id), "owned": int(profile.inventory.get(recipe_id, 0)) > 0,
@@ -180,14 +194,28 @@ func _update_hud() -> void:
 		_: objective = "避开守卫者的冲锋走廊和重击范围。采集素材、回收异常物和蓝图，活着带回前哨。"
 	var weapon: Resource = Catalog.get_item(profile.equipped_weapon)
 	var relic: Resource = Catalog.get_item(profile.equipped_relic)
+	var level := mini(20, 1 + int(profile.xp) / 40)
 	ui.update_hud({"zone_title": simulation.zone.get_title(), "mode": {"offline": "单人行动", "host": "房主", "client": "好友房间"}[session.mode],
 		"player_count": simulation.players.size(), "hp": player.hp, "max_hp": player.max_hp,
-		"coins": profile.coins, "level": mini(20, 1 + int(profile.xp) / 40), "xp": profile.xp,
-		"weapon_name": weapon.display_name, "weapon_kind": weapon.weapon_kind,
+		"coins": profile.coins, "level": level, "xp": profile.xp,
+		"xp_into": 40 if level >= 20 else int(profile.xp) - (level - 1) * 40, "xp_step": 40,
+		"weapon_id": profile.equipped_weapon, "weapon_name": weapon.display_name, "weapon_kind": weapon.weapon_kind,
+		"relic_id": profile.equipped_relic if relic != null else "",
 		"relic_name": relic.display_name if relic != null else "未装备", "relic_charge": player.relic_charge,
-		"equipped_name": weapon.display_name, "objective": objective,
+		"dash_cd": float(player.dash_cd) if simulation.authoritative else _dash_estimate, "dash_max": DASH_COOLDOWN,
+		"equipped_name": weapon.display_name, "objective": objective, "boss": _boss_status(player.actor.position),
 		"interaction": simulation.interaction_for(id), "inventory": inventory, "haul": haul,
 		"recipes": recipes, "station": simulation.station_for(id), "boss_kills": simulation.world_data.get("boss_kills", 0)})
+
+## The guardian's bar appears once it is hurt or the local player closes in.
+func _boss_status(from: Vector2) -> Dictionary:
+	for enemy: Dictionary in simulation.enemies.values():
+		if str(enemy.kind) != "boss":
+			continue
+		var actor: Node2D = enemy.actor
+		if float(enemy.hp) < float(enemy.max_hp) or actor.position.distance_to(from) <= BOSS_BAR_RANGE:
+			return {"name": simulation.zone.get_title() + " · 守卫者", "hp": enemy.hp, "max_hp": enemy.max_hp, "state": actor.boss_state}
+	return {}
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:

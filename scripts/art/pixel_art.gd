@@ -195,6 +195,107 @@ const SPRITES := {
 		"kbbk.kSSk...",
 		"kkkk.kkkk...",
 	],
+	# Interface icons. Digits take the item's colour, like every other tint layer.
+	"icon_cutter": [
+		"kk......kk",
+		"kGk....kGk",
+		".kGk..kGk.",
+		"..kGkkGk..",
+		"...kyyk...",
+		"...kyYk...",
+		"..kyyyyk..",
+		"..kykkyk..",
+		"..kyk.kyk.",
+		"..kkk.kkk.",
+	],
+	"icon_rapid_nailer": [
+		".kkkkkkkk...",
+		"kccTTTTTkkkk",
+		"kTTTTTTTGGGk",
+		"kTTkkkkkkkkk",
+		"kbbk.kSSSk..",
+		"kbbk.kSwSk..",
+		"kkkk.kSSSk..",
+		".....kkkkk..",
+	],
+	"icon_lighter": [
+		"....11....",
+		"...1221...",
+		"...1221...",
+		"....22....",
+		"..kkkkkk..",
+		"..kGGSSk..",
+		"..kkkkkk..",
+		"..kGwGSk..",
+		"..kGGGSk..",
+		"..kGGGSk..",
+		"..kkkkkk..",
+	],
+	"icon_capacitor": [
+		"..kkkkkk..",
+		".kGGGGGGk.",
+		".k111111k.",
+		".k122221k.",
+		".k1k22k1k.",
+		".k122221k.",
+		".k111111k.",
+		".kSSSSSSk.",
+		"..kkkkkk..",
+		"..kg..gk..",
+		"..kg..gk..",
+	],
+	"icon_scrap": [
+		"...kkkk...",
+		"..kGGGgk..",
+		".kkgggSkk.",
+		"kGGkSSkGgk",
+		"kGggkkgggk",
+		"kgSSSkSSSk",
+		".kkkkkkkk.",
+	],
+	"icon_core": [
+		"..kkkkkk..",
+		".k111111k.",
+		".k222222k.",
+		".kRRrRRrk.",
+		".k222222k.",
+		".k333333k.",
+		".k222222k.",
+		".krRRrRRk.",
+		".k333333k.",
+		"..kkkkkk..",
+	],
+	"icon_coil": [
+		".kkkkkkkk.",
+		"kSSSSSSSSk",
+		".kkkkkkkk.",
+		".k121212k.",
+		".k212121k.",
+		".k121212k.",
+		".k212121k.",
+		".kkkkkkkk.",
+		"kSSSSSSSSk",
+		".kkkkkkkk.",
+	],
+	"icon_dash": [
+		".kk..kk...",
+		".kwk.kwk..",
+		"..kwk.kwk.",
+		"...kwk.kwk",
+		"..kwk.kwk.",
+		".kwk.kwk..",
+		".kk..kk...",
+	],
+	"icon_coin": [
+		"..kkkk..",
+		".kYYYYk.",
+		"kYYyyYYk",
+		"kYyYYyYk",
+		"kYyYYyYk",
+		"kYYyyYyk",
+		".kyyyyk.",
+		"..kkkk..",
+	],
 }
 
 ## Fusion Pixel Font (OFL 1.1), drawn crisp only at multiples of its 12 px grid.
@@ -241,6 +342,36 @@ static func tint_layer(sprite: String) -> Texture2D:
 ## Solid white silhouette of the whole sprite, used for hit flashes.
 static func silhouette(sprite: String) -> Texture2D:
 	return _layer(sprite, "flash")
+
+
+## One flattened image of a sprite with its tint layer coloured in, for interface icons.
+## Returns null for an unknown sprite.
+static func icon_image(sprite: String, tint: Color = Color.WHITE) -> Image:
+	var override_path := OVERRIDE_DIR + sprite + ".png"
+	if ResourceLoader.exists(override_path) and DisplayServer.get_name() != "headless":
+		var base: Image = (load(override_path) as Texture2D).get_image()
+		var tint_path := OVERRIDE_DIR + sprite + "_tint.png"
+		if base != null:
+			base.convert(Image.FORMAT_RGBA8)
+		if base != null and ResourceLoader.exists(tint_path):
+			var layer: Image = (load(tint_path) as Texture2D).get_image()
+			for y in range(mini(base.get_height(), layer.get_height())):
+				for x in range(mini(base.get_width(), layer.get_width())):
+					var shade := layer.get_pixel(x, y)
+					if shade.a > 0.0:
+						base.set_pixel(x, y, Color(shade.r * tint.r, shade.g * tint.g, shade.b * tint.b, shade.a))
+		if base != null:
+			return base
+	if not SPRITES.has(sprite):
+		return null
+	var image := _rasterize(SPRITES[sprite], "base")
+	var tinted := _rasterize(SPRITES[sprite], "tint")
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var shade := tinted.get_pixel(x, y)
+			if shade.a > 0.0:
+				image.set_pixel(x, y, Color(shade.r * tint.r, shade.g * tint.g, shade.b * tint.b, 1.0))
+	return image
 
 
 static func sprite_size(sprite: String) -> Vector2:

@@ -1,4 +1,4 @@
-param([string]$Godot, [string]$OutDir, [switch]$Phase1, [switch]$Crafting)
+param([string]$Godot, [string]$OutDir, [switch]$Phase1, [switch]$Crafting, [switch]$Hud)
 # Renders preview screenshots with the normal renderer into an isolated directory.
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'find_godot.ps1')
@@ -19,6 +19,7 @@ try {
     $taskArguments = @('--path', $taskProject, '--script', 'res://tests/capture_preview.gd')
     if ($Phase1) { $taskArguments += @('--', '--phase1') }
     if ($Crafting) { $taskArguments += @('--', '--crafting') }
+    if ($Hud) { $taskArguments += @('--', '--hud') }
     & $taskEngine @taskArguments 2>&1 | Where-Object { "$_" -match 'PREVIEW_CAPTURE|ERROR' }
 }
 finally {

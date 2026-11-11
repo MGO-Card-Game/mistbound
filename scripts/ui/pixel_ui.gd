@@ -20,7 +20,52 @@ const GLYPHS := {
 	" ": [".....", ".....", ".....", ".....", ".....", ".....", "....."],
 }
 
+## Interface icon sprite for each item; anything unlisted falls back by slot.
+const ITEM_ICONS := {
+	"traveler_blade": "crowbar",
+	"hunter_crossbow": "nailgun",
+	"hydraulic_cutter": "icon_cutter",
+	"rapid_nailer": "icon_rapid_nailer",
+	"ember_relic": "icon_lighter",
+	"storm_relic": "icon_capacitor",
+	"scrap_metal": "icon_scrap",
+	"core_sample": "icon_core",
+	"signal_coil": "icon_coil",
+}
+
 static var _cache: Dictionary = {}
+
+
+## A sprite flattened with its tint and upscaled `scale` times for the interface.
+static func icon(sprite: String, tint: Color = Color.WHITE, scale: int = UNIT) -> ImageTexture:
+	var key := "icon:%s:%s:%d" % [sprite, tint.to_html(), scale]
+	if not _cache.has(key):
+		var image: Image = Art.icon_image(sprite, tint)
+		if image == null:
+			image = Art.icon_image("supply_crate")
+		image.resize(image.get_width() * scale, image.get_height() * scale, Image.INTERPOLATE_NEAREST)
+		_cache[key] = ImageTexture.create_from_image(image)
+	return _cache[key]
+
+
+static func item_icon(item_id: String, tint: Color = Color.WHITE, scale: int = UNIT) -> ImageTexture:
+	return icon(str(ITEM_ICONS.get(item_id, "canister")), tint, scale)
+
+
+## Aiming reticle: four ticks around a centre dot, outlined so it reads on any ground.
+static func crosshair() -> Image:
+	var c := Canvas.new(11, 11)
+	for pass_index in range(2):
+		var color := Art.INK if pass_index == 0 else Art.BONE
+		var grow := 1 - pass_index
+		for arm in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			for step in range(3, 5):
+				var p: Vector2i = Vector2i(5, 5) + arm * step
+				c.rect(p.x - grow, p.y - grow, 1 + grow * 2, 1 + grow * 2, color)
+		c.rect(5 - grow, 5 - grow, 1 + grow * 2, 1 + grow * 2, Art.INK if pass_index == 0 else Art.HAZARD_LIGHT)
+	var image := c.image
+	image.resize(image.get_width() * UNIT, image.get_height() * UNIT, Image.INTERPOLATE_NEAREST)
+	return image
 
 
 ## Bevelled 9-slice panel with chamfered corners. `inset` flips the bevel (pressed/fields).

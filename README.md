@@ -24,7 +24,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\run.ps1 -Editor
 - WASD 移动，鼠标瞄准，按住左键攻击，空格闪避，Q 切换撬棍与射钉枪；敌人会追击并预警攻击。
 - 破拆撬棍进行近身扇形攻击；射钉枪发射有飞行时间的钢钉，钢钉命中首个敌人或地形后消失。两把武器都随初始角色提供。
 - 击败普通敌人与守卫者获得经验和个人掉落；靠近按 E 回收报酬和异常物。
-- 采样井守卫者掉落“不熄的打火机”，实验室守卫者掉落“跳闸电容”。I / Esc 打开装备箱，武器与异常物各占一个独立槽位，可自由组合或卸下异常物。
+- 采样井守卫者掉落“不熄的打火机”，实验室守卫者掉落“跳闸电容”。I 打开装备箱，武器与异常物各占一个独立槽位，可自由组合或卸下异常物。
 - 不熄的打火机让武器命中使目标自燃 3 秒，每 0.5 秒造成 4 点伤害；再次命中刷新时长，不叠加层数。
 - 跳闸电容每累计 3 次武器命中放电连锁，主目标及最多两个邻近目标各受到 12 点额外伤害。燃烧和放电不会递归触发异常物。
 - 守卫者交替使用冲锋与范围重击：冲锋先锁定方向显示走廊，重击先显示圆形范围；闪避可穿过伤害窗口，过热（恢复）阶段适合输出。
@@ -34,7 +34,9 @@ powershell -ExecutionPolicy Bypass -File .\tools\run.ps1 -Editor
 - 返回前哨恢复生命。离开再进入设施会刷新敌人；切换区域会清除尚未拾取的掉落。
 - 单人行动、创建好友房间、通过 IP/端口加入；设计上限 4 人。
 
-操作：**WASD 移动 / 左键攻击 / 空格闪避 / Q 切换武器 / E 交互 / I 或 Esc 装备箱**。界面右上角可保存、离开。
+操作：**WASD 移动 / 左键攻击 / 空格闪避 / Q 切换武器 / E 交互 / I 装备箱 / Esc 行动菜单**。Esc 先关闭已打开的面板，再打开行动菜单；保存和返回主菜单都在行动菜单里，返回主菜单需要二次确认，并会提示将丢失的随身素材。
+
+界面只占屏幕四角：左上是区域名、任务简报（约 10 秒后淡出）和消息；右上是等级、报酬和按钮；左下是生命、武器、异常物、闪避冷却和随身素材；右下的按键提示开局显示约 14 秒，之后可在行动菜单里查看。守卫者受伤或玩家靠近时，屏幕顶部出现它的血条和招式状态。
 
 前哨里的收容仓库、观测站目前是视觉占位，维修间提供制作。四把武器（两把初始、两把制作）与两种异常物效果已经实现；制作的武器暂时沿用撬棍与射钉枪的手持外观。更多技能、随机词条、任务、前哨升级、自由建造等留作后续内容。
 
@@ -87,7 +89,7 @@ scripts/world/zone_art.gd        把各区域地面与建筑烘焙成一张像�
 scripts/world/pixel_stage.gd     低分辨率渲染、平滑镜头、雾气、全分辨率文字
 scripts/art/                    调色板、像素绘制工具、文本像素图精灵
 scripts/actors/                 玩家、敌人、掉落、弹体与战斗特效
-scripts/ui/                    主菜单、HUD、装备箱；像素面板与主菜单背景
+scripts/ui/                    主菜单、HUD、装备箱、行动菜单；像素面板、血条与图标格、主菜单背景
 data/items/                    可在 Godot 编辑器调整的 .tres
 tests/                         存档、玩法、像素资源、真实双进程联机、截图
 tools/                         启动、引擎定位、截图
@@ -111,6 +113,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\run_tests.ps1 -Godot 'C:\path\G
 powershell -ExecutionPolicy Bypass -File .\tools\capture.ps1            # 默认写入 test-results\capture
 powershell -ExecutionPolicy Bypass -File .\tools\capture.ps1 -Phase1     # 武器、异常物、守卫者预警的受控展示
 powershell -ExecutionPolicy Bypass -File .\tools\capture.ps1 -Crafting   # 素材点、随身素材、工作台与入库素材
+powershell -ExecutionPolicy Bypass -File .\tools\capture.ps1 -Hud        # 消息、低血量、首领血条、行动菜单与离开确认
 ```
 
 它包装了 `tests/capture_preview.gd`，自动设置隔离的 `MISTBOUND_CAPTURE_DIR` 与 `MISTBOUND_SAVE_DIR`，并在 `test-results` 放置 `.gdignore`，避免 Godot 导入截图。
@@ -119,7 +122,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\capture.ps1 -Crafting   # 素�
 
 没有外部美术素材，全部由代码生成，但都按真实像素资源组织：
 
-- 角色、敌人、掉落和手持工具是 `scripts/art/pixel_art.gd` 里的文本像素图，每个字符对应调色板中的一种颜色；数字 `1–3` 是可染色层（玩家队伍色、异常物颜色）。
+- 角色、敌人、掉落、手持工具和界面图标（`icon_*`）是 `scripts/art/pixel_art.gd` 里的文本像素图，每个字符对应调色板中的一种颜色；数字 `1–3` 是可染色层（玩家队伍色、异常物颜色）。
 - 区域地面和建筑由 `scripts/world/zone_art.gd` 程序化绘制并缓存，建筑正好覆盖碰撞矩形；灯光、信标、指示灯等动画由 `zone_view.gd` 逐帧叠加。
 - 想换成手绘素材时，把 PNG 放到 `res://assets/sprites/<名称>.png`（染色层为 `<名称>_tint.png`，白闪剪影为 `<名称>_flash.png`）即可覆盖同名精灵，1 像素对应 3 个世界单位。
 - 中文文字（地名、玩家名、首领状态）在全分辨率叠加层绘制，伤害数字使用 3×5 像素字体留在像素层。

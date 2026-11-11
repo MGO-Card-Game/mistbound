@@ -78,7 +78,7 @@ func get_overlay_labels() -> Array:
 				callout = "过热"
 				color = Color("ffd68a")
 		if not callout.is_empty():
-			labels.append({"position": position + Vector2(0, -radius - 72), "text": callout, "color": color, "size": 14})
+			labels.append({"position": position + Vector2(0, -radius - 54), "text": callout, "color": color, "size": 14})
 	return labels
 
 
@@ -95,7 +95,8 @@ func _draw() -> void:
 		_: _draw_warden()
 	if burning and kind != "player":
 		_draw_burning()
-	if hp < max_hp or kind == "boss":
+	# The guardian's health lives in the HUD bar; the callout above it stays.
+	if hp < max_hp and kind != "boss":
 		_draw_health()
 	if kind == "player" and local_player and relic_charge > 0:
 		for index in range(3):
